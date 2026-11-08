@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-:root,
 :root[data-theme="dark"] {
   --bg: #0b0f14;
   --card: #121821;
@@ -14,14 +13,15 @@
   --down: #f05252;
   color-scheme: dark;
 }
+:root,
 :root[data-theme="light"] {
-  --bg: #f6f4ef;
+  --bg: #f5f7fa;
   --card: #ffffff;
-  --card2: #f1eee6;
-  --line: #e2ddd1;
-  --fg: #17202b;
-  --muted: #5f6b7a;
-  --accent: #b86e00;
+  --card2: #f0f2f6;
+  --line: #e3e7ed;
+  --fg: #111827;
+  --muted: #5b6575;
+  --accent: #b45f06;
   --accent-fg: #ffffff;
   --up: #15803d;
   --down: #c62828;

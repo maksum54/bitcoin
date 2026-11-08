@@ -34,7 +34,7 @@ async function notify(title: string, body: string) {
 
 export default function App() {
   const [lang, setLang] = useStored<Lang>('lang', 'id');
-  const [theme, setTheme] = useStored<'dark' | 'light'>('theme', 'dark');
+  const [theme, setTheme] = useStored<'dark' | 'light'>('theme', 'light');
   const [tab, setTab] = useState<Tab>(tabFromHash);
   const [draft, setDraft] = useState<Draft | null>(null);
   const t = useMemo(() => makeT(lang), [lang]);
@@ -42,7 +42,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = lang;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b0f14' : '#f6f4ef');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0b0f14' : '#ffffff');
   }, [theme, lang]);
 
   useEffect(() => {

@@ -14,7 +14,7 @@ PWA untuk persiapan nyicil (DCA) Bitcoin: pantau harga, rencanakan cicilan, cata
 | **Explorer** | Cari alamat / txid / blok, biaya jaringan, mempool, hashrate, hitung mundur halving, daftar alamat yang dipantau |
 | **Berita** | Berita Institusi & ETF / Whale / Pasar dengan label **beli/inflow** dan **jual/outflow**, plus transaksi besar on-chain (≥ 50–1.000 BTC) dengan label masuk/keluar exchange |
 
-Bahasa Indonesia/English dan tema gelap/terang bisa diganti dari header.
+Bahasa Indonesia/English dan tema terang (default, putih) / gelap bisa diganti dari header.
 
 ## Sumber data (gratis, tanpa API key)
 
