@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { InstallPrompt, OfflineBanner, UpdateBanner } from './components/Shell';
-import { Loading, useAsync } from './components/ui';
+import { Loading, Num, useAsync, useFlash } from './components/ui';
 import { getPrice } from './lib/api';
 import { idr, type Lang } from './lib/format';
 import { AppCtx, makeT, type Key } from './lib/i18n';
@@ -59,6 +59,7 @@ export default function App() {
   const clearDraft = useCallback(() => setDraft(null), []);
 
   const p = useAsync(getPrice, [], 60_000);
+  const headerFlash = useFlash(p.data?.data.idr);
 
   // Price alerts: checked on each price refresh while the app is open.
   useEffect(() => {
@@ -93,10 +94,12 @@ export default function App() {
             <header className="sticky top-0 z-20 -mx-4 mb-4 border-b border-line bg-bg/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur">
               <div className="flex h-14 items-center justify-between gap-3">
                 <a href="#market" className="flex items-center gap-2 font-bold">
-                  <img src="/favicon.svg" alt="" className="h-7 w-7" />
+                  <img src="/favicon.svg" alt="" className="logo h-7 w-7" />
                   <span>{t('appName')}</span>
                   {p.data && (
-                    <span className="num hidden rounded-lg bg-card px-2 py-0.5 text-sm font-medium text-accent sm:inline">{idr(p.data.data.idr, lang)}</span>
+                    <span className={`num hidden rounded-lg bg-card px-2 py-0.5 text-sm font-medium text-accent sm:inline ${headerFlash}`}>
+                      <Num value={p.data.data.idr} format={(v) => idr(v, lang)} />
+                    </span>
                   )}
                 </a>
                 <nav className="hidden gap-1 sm:flex">
@@ -104,7 +107,7 @@ export default function App() {
                     <a
                       key={k}
                       href={`#${k}`}
-                      className={`rounded-lg px-3 py-1.5 text-sm ${tab === k ? 'bg-accent font-semibold text-accent-fg' : 'text-muted hover:text-fg'}`}
+                      className={`press rounded-lg px-3 py-1.5 text-sm duration-300 ${tab === k ? 'bg-accent font-semibold text-accent-fg shadow-sm' : 'text-muted hover:bg-card hover:text-fg'}`}
                     >
                       {t(`tab.${k}` as Key)}
                     </a>
@@ -117,7 +120,9 @@ export default function App() {
                     aria-label={t('lang.toggle')}
                     title={t('lang.toggle')}
                   >
-                    {lang === 'id' ? 'EN' : 'ID'}
+                    <span key={lang} className="anim-pop inline-block">
+                      {lang === 'id' ? 'EN' : 'ID'}
+                    </span>
                   </button>
                   <button
                     className="rounded-lg border border-line px-2 py-1 text-sm"
@@ -125,7 +130,9 @@ export default function App() {
                     aria-label={t('theme.toggle')}
                     title={t('theme.toggle')}
                   >
-                    {theme === 'dark' ? '☀️' : '🌙'}
+                    <span key={theme} className="anim-pop inline-block">
+                      {theme === 'dark' ? '☀️' : '🌙'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -134,7 +141,7 @@ export default function App() {
             <OfflineBanner />
             <UpdateBanner />
 
-            <main>
+            <main key={tab} className="anim-page">
               <Suspense fallback={<Loading />}>
                 {tab === 'market' && <Market />}
                 {tab === 'plan' && <Plan />}
@@ -153,8 +160,12 @@ export default function App() {
 
             <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
               {TABS.map((k) => (
-                <a key={k} href={`#${k}`} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
-                  <span className="text-lg leading-none">{ICONS[k]}</span>
+                <a key={k} href={`#${k}`} className={`press relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
+                  <span
+                    className={`absolute top-0 h-0.5 rounded-full bg-accent transition-all duration-300 ${tab === k ? 'w-8 opacity-100' : 'w-0 opacity-0'}`}
+                    aria-hidden
+                  />
+                  <span className={`text-lg leading-none transition-transform duration-300 ${tab === k ? '-translate-y-0.5 scale-125' : ''}`}>{ICONS[k]}</span>
                   {t(`tab.${k}` as Key)}
                 </a>
               ))}

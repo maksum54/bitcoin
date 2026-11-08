@@ -71,3 +71,122 @@ button:focus-visible {
 .num {
   font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------------------------ */
+/* Motion. Short, GPU-friendly (transform/opacity) and disabled for   */
+/* people who ask their OS to reduce motion.                          */
+/* ------------------------------------------------------------------ */
+
+/* Smooth theme switch */
+body,
+header,
+nav,
+section,
+input,
+select,
+button,
+a {
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity;
+  transition-duration: 0.25s;
+  transition-timing-function: ease;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes flash-up {
+  0% { background-color: color-mix(in srgb, var(--up) 28%, transparent); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-down {
+  0% { background-color: color-mix(in srgb, var(--down) 28%, transparent); }
+  100% { background-color: transparent; }
+}
+@keyframes ping {
+  75%, 100% { transform: scale(2.4); opacity: 0; }
+}
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-12deg); }
+  75% { transform: rotate(12deg); }
+}
+@keyframes spin-y {
+  from { transform: rotateY(0); }
+  to { transform: rotateY(360deg); }
+}
+
+/* Page (tab) change */
+.anim-page { animation: fade-in 0.25s ease both; }
+
+/* Children appear one after another */
+.stagger > * { animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 340ms; }
+.stagger > *:nth-child(8) { animation-delay: 380ms; }
+.stagger > *:nth-child(n + 9) { animation-delay: 420ms; }
+
+.anim-slide-up { animation: slide-up 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.anim-slide-down { animation: slide-down 0.3s ease both; }
+.anim-pop { animation: pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) both; }
+.anim-wiggle { animation: wiggle 0.5s ease 2; }
+
+/* Price tick highlight */
+.flash-up { animation: flash-up 1.2s ease-out; border-radius: 0.5rem; }
+.flash-down { animation: flash-down 1.2s ease-out; border-radius: 0.5rem; }
+
+/* Skeleton loader */
+.skeleton {
+  border-radius: 0.6rem;
+  background: linear-gradient(90deg, var(--card2) 25%, color-mix(in srgb, var(--line) 70%, var(--card2)) 50%, var(--card2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+/* "Live" dot */
+.live-dot { position: relative; display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: var(--up); }
+.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.live-dot.stale { background: var(--accent); }
+
+/* Interactive lift on devices with a mouse */
+@media (hover: hover) {
+  .lift:hover { transform: translateY(-2px); box-shadow: 0 8px 24px -12px color-mix(in srgb, var(--fg) 30%, transparent); }
+  .logo:hover { animation: spin-y 0.8s ease; }
+}
+button:active:not(:disabled), .press:active { transform: scale(0.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

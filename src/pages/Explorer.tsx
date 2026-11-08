@@ -70,7 +70,7 @@ export default function Explorer() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="stagger grid gap-4 lg:grid-cols-3">
       <div className="grid min-w-0 content-start gap-4 lg:col-span-2">
         <Card>
           <form
@@ -86,7 +86,7 @@ export default function Explorer() {
             </Btn>
           </form>
           {busy && <Loading />}
-          {err && <p className="mt-3 text-sm text-down">{err}</p>}
+          {err && <p className="anim-slide-down mt-3 text-sm text-down">{err}</p>}
           {result?.kind === 'address' && <AddressView info={result.info} txs={result.txs} onOpen={open} />}
           {result?.kind === 'tx' && <TxView tx={result.tx} onOpen={open} />}
           {result?.kind === 'block' && <BlockView block={result.block} />}
@@ -108,7 +108,7 @@ function Network({ onOpen }: { onOpen: (v: string) => void }) {
   const h = halving(n.height);
   return (
     <Card title={t('e.network')} right={<Updated at={n.at} stale={n.stale} />}>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat label={t('e.height')} value={num(n.height, lang)} />
         <Stat label={t('e.mempool')} value={t('e.unconfirmed', { n: num(n.mempool.count, lang) })} sub={`${num(n.mempool.vsize / 1e6, lang, 1)} MvB`} />
         <Stat label={t('e.hashrate')} value={`${num(n.hashrate / 1e18, lang, 0)} EH/s`} />
@@ -123,14 +123,14 @@ function Network({ onOpen }: { onOpen: (v: string) => void }) {
         </div>
       </div>
       <h3 className="mt-4 mb-2 text-xs text-muted">{t('e.fees')}</h3>
-      <div className="grid grid-cols-4 gap-2 text-center">
+      <div className="stagger grid grid-cols-4 gap-2 text-center">
         {[
           [t('e.fast'), n.fees.fastestFee],
           [t('e.halfHour'), n.fees.halfHourFee],
           [t('e.hour'), n.fees.hourFee],
           [t('e.economy'), n.fees.economyFee],
         ].map(([label, v]) => (
-          <div key={label} className="rounded-xl bg-card2 p-2">
+          <div key={label} className="lift rounded-xl bg-card2 p-2">
             <div className="truncate text-xs text-muted">{label}</div>
             <div className="num font-semibold">{v}</div>
           </div>
@@ -139,9 +139,9 @@ function Network({ onOpen }: { onOpen: (v: string) => void }) {
       {blocks.data && (
         <>
           <h3 className="mt-4 mb-2 text-xs text-muted">{t('e.recentBlocks')}</h3>
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+          <div className="stagger -mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
             {blocks.data.data.slice(0, 8).map((b) => (
-              <button key={b.id} onClick={() => onOpen(String(b.height))} className="min-w-28 shrink-0 rounded-xl border border-line bg-card2 p-2 text-left text-xs hover:border-accent">
+              <button key={b.id} onClick={() => onOpen(String(b.height))} className="lift min-w-28 shrink-0 rounded-xl border border-line bg-card2 p-2 text-left text-xs hover:border-accent">
                 <div className="num font-semibold text-accent">#{num(b.height, lang)}</div>
                 <div className="text-muted">{t('e.txs', { n: num(b.tx_count, lang) })}</div>
                 <div className="truncate text-muted">{b.extras?.pool?.name ?? ''}</div>
@@ -162,7 +162,7 @@ function AddressView({ info, txs, onOpen }: { info: AddressInfo; txs: MTx[]; onO
   const watched = watch.some((w) => w.addr === info.address);
   const bal = sats(balanceSats(info));
   return (
-    <div className="mt-4">
+    <div className="anim-slide-up mt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <code className="break-all text-sm">{info.address}</code>
         <Btn
@@ -178,7 +178,7 @@ function AddressView({ info, txs, onOpen }: { info: AddressInfo; txs: MTx[]; onO
         <Stat label={t('e.received')} value={btc(sats(info.chain_stats.funded_txo_sum + info.mempool_stats.funded_txo_sum), lang)} />
       </div>
       <h3 className="mt-4 mb-1 text-xs text-muted">{t('e.recentTx')}</h3>
-      <ul className="divide-y divide-line text-sm">
+      <ul className="stagger divide-y divide-line text-sm">
         {txs.slice(0, 25).map((tx) => {
           const d = sats(txDelta(tx, info.address));
           return (
@@ -206,7 +206,7 @@ function TxView({ tx, onOpen }: { tx: MTx; onOpen: (v: string) => void }) {
   const total = sats(tx.vout.reduce((s, v) => s + v.value, 0));
   const vsize = Math.ceil(tx.weight / 4);
   return (
-    <div className="mt-4">
+    <div className="anim-slide-up mt-4">
       <code className="break-all text-sm">{tx.txid}</code>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Stat
@@ -238,7 +238,7 @@ function IoList({ title, items, onOpen }: { title: string; items: { addr?: strin
   return (
     <div>
       <h3 className="mb-1 text-xs text-muted">{title}</h3>
-      <ul className="divide-y divide-line rounded-xl bg-card2 px-3 text-xs">
+      <ul className="stagger divide-y divide-line rounded-xl bg-card2 px-3 text-xs">
         {items.slice(0, 20).map((it, i) => (
           <li key={i} className="flex justify-between gap-2 py-1.5">
             {it.addr ? (
@@ -260,7 +260,7 @@ function IoList({ title, items, onOpen }: { title: string; items: { addr?: strin
 function BlockView({ block }: { block: Block }) {
   const { t, lang } = useApp();
   return (
-    <div className="mt-4">
+    <div className="anim-slide-up mt-4">
       <div className="text-lg font-semibold text-accent">
         {t('e.block')} #{num(block.height, lang)}
       </div>
@@ -297,7 +297,7 @@ function WatchList({ onOpen }: { onOpen: (v: string) => void }) {
         <p className="text-sm text-muted">{t('e.watchEmpty')}</p>
       ) : (
         <>
-          <ul className="divide-y divide-line text-sm">
+          <ul className="stagger divide-y divide-line text-sm">
             {watch.map((w) => {
               const b = balances.data?.[w.addr];
               return (

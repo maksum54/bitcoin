@@ -29,7 +29,7 @@ export default function PlanPage() {
   const boughtMonths = new Set(txs.filter((x) => x.type === 'buy').map((x) => x.date.slice(0, 7)));
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="stagger grid gap-4 lg:grid-cols-3">
       <Card title={t('p.title')}>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -78,7 +78,7 @@ export default function PlanPage() {
           <Loading />
         ) : (
           <>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="stagger grid gap-2 sm:grid-cols-3">
               {[
                 { key: 'bear', label: t('p.bear'), pctv: scen.bear, edit: true },
                 { key: 'flat', label: t('p.flat'), pctv: 0, edit: false },
@@ -86,7 +86,7 @@ export default function PlanPage() {
               ].map((s) => {
                 const p = projectPlan(plan, price.idr, s.pctv, s.label);
                 return (
-                  <div key={s.key} className="rounded-xl bg-card2 p-3 text-sm">
+                  <div key={s.key} className="lift rounded-xl bg-card2 p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-semibold">{s.label}</span>
                       {s.edit ? (
@@ -127,14 +127,14 @@ export default function PlanPage() {
       </Card>
 
       <Card title={t('p.schedule')}>
-        <ul className="divide-y divide-line text-sm">
+        <ul className="stagger divide-y divide-line text-sm">
           {months.map((m) => {
             const done = boughtMonths.has(m);
             const date = `${m}-${String(plan.day).padStart(2, '0')}`;
             return (
               <li key={m} className="flex items-center justify-between gap-2 py-2">
                 <span className="flex items-center gap-2">
-                  <span className={`grid h-5 w-5 place-items-center rounded-full text-xs ${done ? 'bg-up text-white' : 'border border-line'}`}>{done ? '✓' : ''}</span>
+                  <span className={`grid h-5 w-5 place-items-center rounded-full text-xs ${done ? 'anim-pop bg-up text-white' : 'border border-line'}`}>{done ? '✓' : ''}</span>
                   {monthLabel(`${m}-01T00:00:00`, lang)}
                 </span>
                 {done ? (
@@ -195,7 +195,7 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
         <Loading />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label={t('p.invested')} value={idr(result.invested * rate, lang)} sub={t('p.months.n', { n: result.points.length })} />
             <Stat label={t('p.btcGot')} value={num(result.btc, lang, 6)} sub={`${t('p.avgPrice')}: Rp ${compact(result.avgPrice * rate, lang)}`} />
             <Stat
@@ -231,8 +231,8 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
                   formatter={(v, n) => [idr(v as number, lang), n === 'value' ? t('p.endValue') : t('p.invested')]}
                 />
                 <Legend formatter={(v) => (v === 'value' ? t('p.endValue') : t('p.invested'))} />
-                <Line type="monotone" dataKey="invested" stroke="var(--muted)" dot={false} strokeWidth={2} isAnimationActive={false} />
-                <Line type="monotone" dataKey="value" stroke="var(--accent)" dot={false} strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="invested" stroke="var(--muted)" dot={false} strokeWidth={2} animationDuration={1000} />
+                <Line type="monotone" dataKey="value" stroke="var(--accent)" dot={false} strokeWidth={2} animationDuration={1400} animationBegin={200} />
               </LineChart>
             </ResponsiveContainer>
           </div>

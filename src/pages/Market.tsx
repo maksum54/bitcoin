@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Btn, Card, ErrorBox, Field, Loading, Seg, Stat, Updated, parseBtc, parseIdr, useAsync } from '../components/ui';
+import { Btn, Card, ErrorBox, Field, Loading, Num, Seg, Stat, Updated, parseBtc, parseIdr, useAsync, useFlash } from '../components/ui';
 import { getChart } from '../lib/api';
 import { uid } from '../lib/calc';
 import { compact, dateOnly, dateTime, idr, num, pct, usd } from '../lib/format';
@@ -16,6 +16,7 @@ export default function Market() {
   const [days, setDays] = useStored<number>('ui.range', 30);
   const [vs, setVs] = useStored<'idr' | 'usd'>('ui.vs', 'idr');
   const chart = useAsync(() => getChart(days, vs), [days, vs], 5 * 60_000);
+  const flash = useFlash(price ? (vs === 'idr' ? price.idr : price.usd) : undefined);
 
   if (!price && error) return <ErrorBox onRetry={reload} />;
   if (!price) return <Loading />;
@@ -29,12 +30,14 @@ export default function Market() {
   const color = rangeUp ? 'var(--up)' : 'var(--down)';
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="stagger grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="text-xs text-muted">Bitcoin · BTC</div>
-            <div className="num text-3xl font-bold sm:text-4xl">{fmt(vs === 'idr' ? price.idr : price.usd)}</div>
+            <div className={`num -mx-1 px-1 text-3xl font-bold sm:text-4xl ${flash}`}>
+              <Num value={vs === 'idr' ? price.idr : price.usd} format={fmt} />
+            </div>
             <div className="num mt-1 text-sm text-muted">
               {vs === 'idr' ? usd(price.usd, lang) : idr(price.idr, lang)}{' '}
               <span className={change >= 0 ? 'text-up' : 'text-down'}>{pct(change, lang)} (24h)</span>
@@ -86,12 +89,12 @@ export default function Market() {
                   labelFormatter={(v) => dateTime(v as number, lang)}
                   formatter={(v) => [fmt(v as number), 'BTC']}
                 />
-                <Area type="monotone" dataKey="p" stroke={color} strokeWidth={2} fill="url(#g)" isAnimationActive={false} />
+                <Area type="monotone" dataKey="p" stroke={color} strokeWidth={2} fill="url(#g)" animationDuration={900} animationEasing="ease-out" />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="stagger mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Stat label={t('m.change24')} value={pct(change, lang)} tone={change >= 0 ? 'up' : 'down'} />
           <Stat
             label={t('m.marketCap')}
@@ -103,7 +106,7 @@ export default function Market() {
           <Updated at={at} stale={stale} />
         </div>
       </Card>
-      <div className="grid min-w-0 content-start gap-4">
+      <div className="stagger grid min-w-0 content-start gap-4">
         <Converter priceIdr={price.idr} priceUsd={price.usd} />
         <Alerts priceIdr={price.idr} />
       </div>
@@ -181,9 +184,9 @@ function Alerts({ priceIdr }: { priceIdr: number }) {
         <ul className="mt-1 divide-y divide-line text-sm">
           {alerts.length === 0 && <li className="py-2 text-muted">{t('m.noAlerts')}</li>}
           {alerts.map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-2 py-2">
+            <li key={a.id} className="anim-slide-down flex items-center justify-between gap-2 py-2">
               <span className={a.active ? '' : 'text-muted'}>
-                {a.dir === 'above' ? '▲' : '▼'} <span className="num">{idr(a.priceIdr, lang)}</span>
+                <span className={a.active ? 'inline-block animate-bounce [animation-duration:2s]' : ''}>{a.dir === 'above' ? '▲' : '▼'}</span> <span className="num">{idr(a.priceIdr, lang)}</span>
                 {!a.active && <span className="ml-1 text-xs">({t('m.fired')})</span>}
               </span>
               <button className="px-2 text-muted hover:text-down" aria-label={t('f.delete')} onClick={() => setAlerts((x) => x.filter((y) => y.id !== a.id))}>

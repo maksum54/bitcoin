@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Btn, Card, Field, Stat, parseBtc, parseIdr } from '../components/ui';
+import { Btn, Card, Field, Num, Stat, parseBtc, parseIdr } from '../components/ui';
 import { computePortfolio, uid, type Tx } from '../lib/calc';
 import { btc, dateOnly, idr, num, pct } from '../lib/format';
 import { useApp } from '../lib/i18n';
@@ -50,16 +50,16 @@ export default function Portfolio() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="stagger grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <Stat label={t('f.btc')} value={num(s.btc, lang, 8)} sub={`${num(Math.round(s.btc * 1e8), lang)} sats`} />
-          <Stat label={t('f.value')} value={price ? idr(s.value, lang) : '–'} />
-          <Stat label={t('f.cost')} value={idr(s.costBasis, lang)} />
+        <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <Stat label={t('f.btc')} value={<Num value={s.btc} format={(v) => num(v, lang, 8)} />} sub={`${num(Math.round(s.btc * 1e8), lang)} sats`} />
+          <Stat label={t('f.value')} value={price ? <Num value={s.value} format={(v) => idr(v, lang)} /> : '–'} />
+          <Stat label={t('f.cost')} value={<Num value={s.costBasis} format={(v) => idr(v, lang)} />} />
           <Stat label={t('f.avg')} value={s.avgPrice ? idr(s.avgPrice, lang) : '–'} sub={price ? `${t('f.useNow')}: ${idr(price.idr, lang)}` : undefined} />
           <Stat
             label={t('f.unrealized')}
-            value={price && s.btc > 0 ? idr(s.unrealized, lang) : '–'}
+            value={price && s.btc > 0 ? <Num value={s.unrealized} format={(v) => idr(v, lang)} /> : '–'}
             sub={price && s.btc > 0 ? pct(s.unrealizedPct, lang) : undefined}
             tone={s.btc > 0 && price ? (s.unrealized >= 0 ? 'up' : 'down') : null}
           />
@@ -94,7 +94,7 @@ export default function Portfolio() {
           </Btn>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
         </div>
-        {msg && <p className="mt-2 text-sm text-accent">{msg}</p>}
+        {msg && <p key={msg} className="anim-pop mt-2 text-sm text-accent">{msg}</p>}
         <p className="mt-2 text-xs text-muted">{t('f.localNote')}</p>
       </Card>
 
@@ -114,9 +114,9 @@ export default function Portfolio() {
                   <th />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody className="stagger divide-y divide-line">
                 {sorted.map((x) => (
-                  <tr key={x.id}>
+                  <tr key={x.id} className="hover:bg-card2">
                     <td className="py-2 whitespace-nowrap">
                       <span className={`mr-2 rounded px-1.5 py-0.5 text-xs ${x.type === 'buy' ? 'bg-up/15 text-up' : 'bg-down/15 text-down'}`}>
                         {x.type === 'buy' ? t('f.buy') : t('f.sell')}
@@ -182,14 +182,14 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
   };
 
   return (
-    <form onSubmit={submit} className="grid grid-cols-2 gap-3">
+    <form onSubmit={submit} className="anim-slide-down grid grid-cols-2 gap-3">
       <div className="col-span-2 grid grid-cols-2 gap-1 rounded-xl bg-card2 p-1">
         {(['buy', 'sell'] as const).map((k) => (
           <button
             type="button"
             key={k}
             onClick={() => setType(k)}
-            className={`rounded-lg py-1.5 text-sm font-medium ${type === k ? (k === 'buy' ? 'bg-up text-white' : 'bg-down text-white') : 'text-muted'}`}
+            className={`rounded-lg py-1.5 text-sm font-medium duration-300 ${type === k ? (k === 'buy' ? 'bg-up text-white shadow-sm' : 'bg-down text-white shadow-sm') : 'text-muted hover:text-fg'}`}
           >
             {k === 'buy' ? t('f.buy') : t('f.sell')}
           </button>

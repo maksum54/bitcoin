@@ -46,9 +46,9 @@ export function InstallPrompt() {
   if (standalone || snoozed || !engaged || (!evt && !ios)) return null;
 
   return (
-    <div className="fixed inset-x-3 bottom-20 z-30 mx-auto max-w-md rounded-2xl border border-accent/50 bg-card p-4 shadow-2xl sm:bottom-6">
+    <div className="anim-slide-up fixed inset-x-3 bottom-20 z-30 mx-auto max-w-md rounded-2xl border border-accent/50 bg-card p-4 shadow-2xl sm:bottom-6">
       <div className="flex items-start gap-3">
-        <img src="/pwa-192.png" alt="" className="h-10 w-10 rounded-xl" />
+        <img src="/pwa-192.png" alt="" className="anim-wiggle h-10 w-10 rounded-xl" />
         <p className="text-sm">{ios && !evt ? t('install.ios') : t('install.text')}</p>
       </div>
       <div className="mt-3 flex justify-end gap-2">
@@ -86,7 +86,7 @@ export function OfflineBanner() {
     };
   }, []);
   if (online) return null;
-  return <div className="mb-4 rounded-xl border border-accent/50 bg-accent/10 p-3 text-sm text-accent">📴 {t('offline')}</div>;
+  return <div className="anim-slide-down mb-4 rounded-xl border border-accent/50 bg-accent/10 p-3 text-sm text-accent">📴 {t('offline')}</div>;
 }
 
 export function UpdateBanner() {
@@ -102,7 +102,7 @@ export function UpdateBanner() {
   });
   if (!needRefresh) return null;
   return (
-    <div className="mb-4 flex items-center justify-between gap-2 rounded-xl border border-line bg-card p-3 text-sm">
+    <div className="anim-slide-down mb-4 flex items-center justify-between gap-2 rounded-xl border border-line bg-card p-3 text-sm">
       <span>{t('update.ready')}</span>
       <Btn onClick={() => updateServiceWorker(true)}>{t('update.reload')}</Btn>
     </div>

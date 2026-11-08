@@ -1,4 +1,4 @@
-import { Card, ErrorBox, Loading, Seg, Updated, useAsync } from '../components/ui';
+import { Card, ErrorBox, Loading, Num, Seg, Updated, useAsync } from '../components/ui';
 import { getNews, getWhales, type NewsItem, type WhaleTx } from '../lib/api';
 import { ago, compact, num, short } from '../lib/format';
 import { useApp, type Key } from '../lib/i18n';
@@ -23,7 +23,7 @@ const WHALE_FLOW: Record<WhaleTx['flow'], { key: Key; cls: string }> = {
 
 export default function News() {
   return (
-    <div className="grid gap-4 lg:grid-cols-5">
+    <div className="stagger grid gap-4 lg:grid-cols-5">
       <div className="min-w-0 lg:col-span-3">
         <Headlines />
       </div>
@@ -75,11 +75,11 @@ function Headlines() {
       ) : (
         <>
           {news.data.data.failed > 0 && <p className="mb-2 text-xs text-muted">{t('n.failed', { n: news.data.data.failed })}</p>}
-          <ul className="divide-y divide-line">
+          <ul key={`${cat}-${flow}`} className="stagger divide-y divide-line">
             {items.length === 0 && <li className="py-6 text-center text-sm text-muted">{t('n.empty')}</li>}
             {items.map((n) => (
               <li key={n.id} className="py-3">
-                <a href={n.link} target="_blank" rel="noreferrer" className="group block">
+                <a href={n.link} target="_blank" rel="noreferrer" className="group -mx-2 block rounded-xl px-2 py-1 hover:bg-card2">
                   <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                     {n.flow && <span className={`rounded px-1.5 py-0.5 font-medium ${FLOW_STYLE[n.flow]}`}>{t(`n.${n.flow}` as Key)}</span>}
                     {cat === 'all' && <span className="rounded bg-card2 px-1.5 py-0.5">{t(`n.${n.category}` as Key)}</span>}
@@ -88,7 +88,7 @@ function Headlines() {
                     <span>{ago(n.publishedAt, lang)}</span>
                     {n.lang === 'id' && <span>🇮🇩</span>}
                   </div>
-                  <div className="font-medium leading-snug group-hover:text-accent">{n.title}</div>
+                  <div className="font-medium leading-snug transition-colors group-hover:text-accent">{n.title} <span className="inline-block opacity-0 transition-all duration-300 group-hover:translate-x-1 group-hover:opacity-100">→</span></div>
                   {n.summary && <p className="mt-1 line-clamp-2 text-sm text-muted">{n.summary}</p>}
                 </a>
               </li>
@@ -123,19 +123,27 @@ function Whales() {
         <Loading />
       ) : (
         <>
-          <ul className="divide-y divide-line">
+          <ul key={min} className="stagger divide-y divide-line">
             {w.data.data.items.length === 0 && <li className="py-6 text-center text-sm text-muted">{t('n.empty')}</li>}
             {w.data.data.items.map((x) => (
               <li key={x.txid} className="py-3 text-sm">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="num text-base font-semibold">{num(x.btc, lang, 2)} BTC</div>
+                    <div className="num text-base font-semibold">
+                      <Num value={x.btc} format={(v) => `${num(v, lang, 2)} BTC`} />
+                    </div>
                     {price && <div className="num text-xs text-muted">≈ Rp {compact(x.btc * price.idr, lang)}</div>}
                   </div>
                   <div className="text-right text-xs">
                     <span className={`rounded px-1.5 py-0.5 font-medium ${WHALE_FLOW[x.flow].cls}`}>{t(WHALE_FLOW[x.flow].key)}</span>
                     <div className="mt-1 text-muted">
-                      {x.confirmed ? `#${num(x.height ?? 0, lang)}` : t('n.pending')} · {ago(x.time, lang)}
+                      {x.confirmed ? `#${num(x.height ?? 0, lang)}` : (
+                        <span className="inline-flex items-center gap-1">
+                          <span className="live-dot stale" aria-hidden />
+                          {t('n.pending')}
+                        </span>
+                      )}{' '}
+                      · {ago(x.time, lang)}
                     </div>
                   </div>
                 </div>
