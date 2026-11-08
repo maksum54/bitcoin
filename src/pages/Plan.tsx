@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Btn, Card, ErrorBox, Field, Loading, Stat, parseIdr, useAsync } from '../components/ui';
+import { Btn, Card, ErrorBox, Field, Loading, Stat, parseMoney, useAsync } from '../components/ui';
 import { getLongHistoryUsd } from '../lib/api';
-import { backtestDca, planMonths, projectPlan, type Plan, type Tx } from '../lib/calc';
-import { btc, compact, idr, monthLabel, num, pct } from '../lib/format';
+import { backtestDca, normalizePlan, normalizeTx, planMonths, projectPlan, type Plan, type Tx } from '../lib/calc';
+import { btc, compact, monthLabel, num, pct } from '../lib/format';
+import { CCY_LABEL, compactMoney, convert, money, roundNice, type Ccy } from '../lib/money';
 import { useApp } from '../lib/i18n';
 import { useNav } from '../lib/nav';
 import { usePrice } from '../lib/price';
@@ -13,36 +14,48 @@ function nextJanuary(): string {
   return `${new Date().getFullYear() + 1}-01`;
 }
 
-export const DEFAULT_PLAN: Plan = { monthlyIdr: 1_000_000, startMonth: nextJanuary(), months: 12, day: 1, feePct: 0.3 };
+export const DEFAULT_PLAN: Plan = { monthly: 100, ccy: 'usd', startMonth: nextJanuary(), months: 12, day: 1, feePct: 0.3 };
 
 export default function PlanPage() {
-  const { t, lang } = useApp();
+  const { t, lang, ccy, fx } = useApp();
   const { price } = usePrice();
   const { go } = useNav();
-  const [plan, setPlan] = useStored<Plan>('plan', DEFAULT_PLAN);
+  const [storedPlan, setPlan] = useStored<Plan>('plan', DEFAULT_PLAN);
+  const plan = normalizePlan(storedPlan);
   const [txs] = useStored<Tx[]>('txs', []);
-  const [monthlyStr, setMonthlyStr] = useState(() => num(plan.monthlyIdr, lang));
+  const [monthlyStr, setMonthlyStr] = useState(() => num(plan.monthly, lang, 2));
+  const m = (v: number) => money(v, plan.ccy, lang);
+
+  // Keep the plan in the currency the person buys with; convert once when it changes.
+  useEffect(() => {
+    if (plan.ccy === ccy || !fx) return;
+    const monthly = roundNice(convert(plan.monthly, plan.ccy, ccy, fx), ccy);
+    setPlan({ ...plan, monthly, ccy });
+    setMonthlyStr(num(monthly, lang, 2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ccy, fx, plan.ccy]);
   const [scen, setScen] = useStored('ui.scenarios', { bear: -30, bull: 40 });
 
   const upd = (p: Partial<Plan>) => setPlan({ ...plan, ...p });
   const months = planMonths(plan);
-  const boughtMonths = new Set(txs.filter((x) => x.type === 'buy').map((x) => x.date.slice(0, 7)));
+  const boughtMonths = new Set(txs.map(normalizeTx).filter((x) => x.type === 'buy').map((x) => x.date.slice(0, 7)));
+  const priceNow = price ? price[plan.ccy] : 0;
 
   return (
     <div className="stagger grid gap-4 lg:grid-cols-3">
       <Card title={t('p.title')}>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Field label={t('p.monthly')}>
+            <Field label={t('p.monthly', { ccy: CCY_LABEL[plan.ccy] })}>
               <input
-                inputMode="numeric"
+                inputMode="decimal"
                 value={monthlyStr}
                 onChange={(e) => {
                   setMonthlyStr(e.target.value);
-                  const v = parseIdr(e.target.value);
-                  if (Number.isFinite(v) && v > 0) upd({ monthlyIdr: v });
+                  const v = parseMoney(e.target.value);
+                  if (Number.isFinite(v) && v > 0) upd({ monthly: v });
                 }}
-                onBlur={() => setMonthlyStr(num(plan.monthlyIdr, lang))}
+                onBlur={() => setMonthlyStr(num(plan.monthly, lang, 2))}
               />
             </Field>
           </div>
@@ -63,13 +76,16 @@ export default function PlanPage() {
           {price && (
             <p>
               {t('p.satsNow', {
-                amount: idr(plan.monthlyIdr, lang),
-                sats: num(Math.round(((plan.monthlyIdr * (1 - plan.feePct / 100)) / price.idr) * 1e8), lang),
-                btc: btc(+((plan.monthlyIdr * (1 - plan.feePct / 100)) / price.idr).toFixed(8), lang),
+                amount: m(plan.monthly),
+                sats: num(Math.round(((plan.monthly * (1 - plan.feePct / 100)) / priceNow) * 1e8), lang),
+                btc: btc(+((plan.monthly * (1 - plan.feePct / 100)) / priceNow).toFixed(8), lang),
               })}
             </p>
           )}
-          <p className="text-muted">{t('p.total', { amount: idr(plan.monthlyIdr * plan.months, lang), n: plan.months })}</p>
+          <p className="text-muted">
+            {t('p.total', { amount: m(plan.monthly * plan.months), n: plan.months })}
+            {fx > 0 && ` ≈ ${money(convert(plan.monthly * plan.months, plan.ccy, plan.ccy === 'usd' ? 'idr' : 'usd', fx), plan.ccy === 'usd' ? 'idr' : 'usd', lang, 0)}`}
+          </p>
         </div>
       </Card>
 
@@ -84,7 +100,7 @@ export default function PlanPage() {
                 { key: 'flat', label: t('p.flat'), pctv: 0, edit: false },
                 { key: 'bull', label: t('p.bull'), pctv: scen.bull, edit: true },
               ].map((s) => {
-                const p = projectPlan(plan, price.idr, s.pctv, s.label);
+                const p = projectPlan(plan, priceNow, s.pctv, s.label);
                 return (
                   <div key={s.key} className="lift rounded-xl bg-card2 p-3 text-sm">
                     <div className="flex items-center justify-between gap-2">
@@ -106,14 +122,14 @@ export default function PlanPage() {
                     </div>
                     <dl className="num mt-2 grid grid-cols-2 gap-y-1">
                       <dt className="text-muted">{t('p.invested')}</dt>
-                      <dd className="text-right">{idr(p.invested, lang)}</dd>
+                      <dd className="text-right">{m(p.invested)}</dd>
                       <dt className="text-muted">{t('p.btcGot')}</dt>
                       <dd className="text-right">{num(p.btc, lang, 6)}</dd>
                       <dt className="text-muted">{t('p.endPrice')}</dt>
-                      <dd className="text-right">Rp {compact(p.endPrice, lang)}</dd>
+                      <dd className="text-right">{compactMoney(p.endPrice, plan.ccy, lang)}</dd>
                       <dt className="text-muted">{t('p.endValue')}</dt>
                       <dd className={`text-right font-semibold ${p.roiPct >= 0 ? 'text-up' : 'text-down'}`}>
-                        {idr(p.value, lang)}
+                        {m(p.value)}
                         <div className="text-xs font-normal">{pct(p.roiPct, lang)}</div>
                       </dd>
                     </dl>
@@ -140,7 +156,7 @@ export default function PlanPage() {
                 {done ? (
                   <span className="text-xs text-up">{t('p.done')}</span>
                 ) : (
-                  <Btn kind="ghost" className="!px-2 !py-1 text-xs" onClick={() => go('portfolio', { date, totalIdr: plan.monthlyIdr })}>
+                  <Btn kind="ghost" className="!px-2 !py-1 text-xs" onClick={() => go('portfolio', { date, total: plan.monthly, ccy: plan.ccy })}>
                     + {t('p.record')}
                   </Btn>
                 )}
@@ -151,12 +167,12 @@ export default function PlanPage() {
         <p className="mt-2 text-xs text-muted">{t('p.scheduleNote')}</p>
       </Card>
 
-      <Backtest monthlyIdr={plan.monthlyIdr} day={plan.day} feePct={plan.feePct} />
+      <Backtest monthly={plan.monthly} ccy={plan.ccy} day={plan.day} feePct={plan.feePct} />
     </div>
   );
 }
 
-function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number; feePct: number }) {
+function Backtest({ monthly, ccy, day, feePct }: { monthly: number; ccy: Ccy; day: number; feePct: number }) {
   const { t, lang } = useApp();
   const { price } = usePrice();
   const hist = useAsync(() => getLongHistoryUsd(), []);
@@ -164,7 +180,9 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
   const [from, setFrom] = useStored('ui.btFrom', `${now.getFullYear() - 4}-01`);
   const [to, setTo] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
 
-  const rate = price ? price.idr / price.usd : null;
+  // History is in USD; `rate` converts USD results into the plan currency (1 for USD).
+  const rate = price ? (ccy === 'usd' ? 1 : price.idr / price.usd) : null;
+  const m = (v: number) => money(v, ccy, lang);
   const result = useMemo(() => {
     if (!hist.data || !rate) return null;
     const start = new Date(`${from}-01T00:00:00`).getTime();
@@ -173,8 +191,8 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
     const series = hist.data.data;
     // Use today's price as the latest point so the result matches the live price.
     const withLive = price ? [...series, { t: Date.now(), p: price.usd }] : series;
-    return backtestDca(withLive, monthlyIdr / rate, start, end, day, feePct);
-  }, [hist.data, rate, from, to, monthlyIdr, day, feePct, price]);
+    return backtestDca(withLive, monthly / rate, start, end, day, feePct);
+  }, [hist.data, rate, from, to, monthly, day, feePct, price]);
 
   const chartData = result?.points.map((p) => ({ t: p.t, invested: p.invested * rate!, value: p.value * rate! }));
 
@@ -196,17 +214,17 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
       ) : (
         <>
           <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat label={t('p.invested')} value={idr(result.invested * rate, lang)} sub={t('p.months.n', { n: result.points.length })} />
-            <Stat label={t('p.btcGot')} value={num(result.btc, lang, 6)} sub={`${t('p.avgPrice')}: Rp ${compact(result.avgPrice * rate, lang)}`} />
+            <Stat label={t('p.invested')} value={m(result.invested * rate)} sub={t('p.months.n', { n: result.points.length })} />
+            <Stat label={t('p.btcGot')} value={num(result.btc, lang, 6)} sub={`${t('p.avgPrice')}: ${m(result.avgPrice * rate)}`} />
             <Stat
               label={`${t('p.dca')} — ${t('p.endValue')}`}
-              value={idr(result.value * rate, lang)}
+              value={m(result.value * rate)}
               sub={pct(result.roiPct, lang)}
               tone={result.roiPct >= 0 ? 'up' : 'down'}
             />
             <Stat
               label={t('p.lump')}
-              value={idr(result.lumpSumValue * rate, lang)}
+              value={m(result.lumpSumValue * rate)}
               sub={pct(result.lumpSumRoiPct, lang)}
               tone={result.lumpSumRoiPct >= 0 ? 'up' : 'down'}
             />
@@ -228,7 +246,7 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
                 <Tooltip
                   contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, color: 'var(--fg)' }}
                   labelFormatter={(v) => monthLabel(v as number, lang)}
-                  formatter={(v, n) => [idr(v as number, lang), n === 'value' ? t('p.endValue') : t('p.invested')]}
+                  formatter={(v, n) => [m(v as number), n === 'value' ? t('p.endValue') : t('p.invested')]}
                 />
                 <Legend formatter={(v) => (v === 'value' ? t('p.endValue') : t('p.invested'))} />
                 <Line type="monotone" dataKey="invested" stroke="var(--muted)" dot={false} strokeWidth={2} animationDuration={1000} />
@@ -236,7 +254,7 @@ function Backtest({ monthlyIdr, day, feePct }: { monthlyIdr: number; day: number
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-2 text-xs text-muted">{t('p.fxNote')}</p>
+          {ccy === 'idr' && <p className="mt-2 text-xs text-muted">{t('p.fxNote')}</p>}
         </>
       )}
     </Card>

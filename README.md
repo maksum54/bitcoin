@@ -8,13 +8,13 @@ PWA untuk persiapan nyicil (DCA) Bitcoin: pantau harga, rencanakan cicilan, cata
 
 | Tab | Isi |
 | --- | --- |
-| **Pasar** | Harga BTC (IDR/USD), grafik 24 jam–1 tahun, konverter BTC ↔ IDR ↔ sats, alarm harga |
+| **Pasar** | Harga BTC (USD/IDR), grafik 24 jam–1 tahun, konverter BTC ↔ USD ↔ IDR ↔ sats, alarm harga (USD atau IDR) |
 | **Nyicil** | Rencana cicilan bulanan (default mulai Januari tahun depan), proyeksi 3 skenario, jadwal yang otomatis tercentang, simulasi DCA dengan data historis sejak 2011 |
 | **Portofolio** | Catat beli/jual, harga rata-rata, untung/rugi (metode average cost), backup/restore JSON |
 | **Explorer** | Cari alamat / txid / blok, biaya jaringan, mempool, hashrate, hitung mundur halving, daftar alamat yang dipantau |
 | **Berita** | Berita Institusi & ETF / Whale / Pasar dengan label **beli/inflow** dan **jual/outflow**, plus transaksi besar on-chain (≥ 50–1.000 BTC) dengan label masuk/keluar exchange |
 
-Bahasa Indonesia/English dan tema terang (default, putih) / gelap bisa diganti dari header.
+Mata uang **USD (default) / IDR**, bahasa Indonesia/English, dan tema terang (default, putih) / gelap bisa diganti dari header. Mata uang menentukan tampilan harga, rencana nyicil, portofolio, dan alarm baru; tiap transaksi & alarm menyimpan mata uangnya sendiri, dan transaksi dalam mata uang lain dikonversi dengan kurs hari ini.
 
 ## Sumber data (gratis, tanpa API key)
 
@@ -66,7 +66,7 @@ Semua data (transaksi, rencana, alarm, alamat dipantau) tersimpan di `localStora
 
 - Alarm harga hanya dicek saat aplikasi terbuka. Notifikasi ketika aplikasi ditutup butuh server Web Push (VAPID) + database langganan.
 - Data aliran dana ETF harian (angka resmi per fund) belum ada; yang ada adalah berita yang dilabeli inflow/outflow.
-- Simulasi DCA memakai harga USD historis dikali kurs USD/IDR hari ini (perkiraan).
+- Simulasi DCA memakai harga historis USD; kalau mata uang IDR dipilih, hasilnya dikali kurs USD/IDR hari ini (perkiraan).
 
 ## Struktur
 

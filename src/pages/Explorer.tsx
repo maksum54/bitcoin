@@ -16,7 +16,8 @@ import {
   type MTx,
 } from '../lib/api';
 import { halving } from '../lib/calc';
-import { ago, btc, dateOnly, dateTime, idr, num, pct, short } from '../lib/format';
+import { ago, btc, dateOnly, dateTime, num, pct, short } from '../lib/format';
+import { money } from '../lib/money';
 import { useApp } from '../lib/i18n';
 import { usePrice } from '../lib/price';
 import { useStored } from '../lib/storage';
@@ -156,7 +157,7 @@ function Network({ onOpen }: { onOpen: (v: string) => void }) {
 }
 
 function AddressView({ info, txs, onOpen }: { info: AddressInfo; txs: MTx[]; onOpen: (v: string) => void }) {
-  const { t, lang } = useApp();
+  const { t, lang, ccy } = useApp();
   const { price } = usePrice();
   const [watch, setWatch] = useStored<Watch[]>('watch', []);
   const watched = watch.some((w) => w.addr === info.address);
@@ -173,7 +174,7 @@ function AddressView({ info, txs, onOpen }: { info: AddressInfo; txs: MTx[]; onO
         </Btn>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        <Stat label={t('e.balance')} value={btc(bal, lang)} sub={price ? idr(bal * price.idr, lang) : undefined} />
+        <Stat label={t('e.balance')} value={btc(bal, lang)} sub={price ? money(bal * price[ccy], ccy, lang, 0) : undefined} />
         <Stat label={t('e.txCount')} value={num(info.chain_stats.tx_count + info.mempool_stats.tx_count, lang)} />
         <Stat label={t('e.received')} value={btc(sats(info.chain_stats.funded_txo_sum + info.mempool_stats.funded_txo_sum), lang)} />
       </div>
@@ -279,7 +280,7 @@ function BlockView({ block }: { block: Block }) {
 }
 
 function WatchList({ onOpen }: { onOpen: (v: string) => void }) {
-  const { t, lang } = useApp();
+  const { t, lang, ccy } = useApp();
   const { price } = usePrice();
   const [watch, setWatch] = useStored<Watch[]>('watch', []);
   const balances = useAsync(
@@ -327,7 +328,7 @@ function WatchList({ onOpen }: { onOpen: (v: string) => void }) {
           <div className="mt-3 rounded-xl bg-card2 p-3">
             <div className="text-xs text-muted">Total</div>
             <div className="num font-semibold">{btc(total, lang)}</div>
-            {price && <div className="num text-xs text-muted">{idr(total * price.idr, lang)}</div>}
+            {price && <div className="num text-xs text-muted">{money(total * price[ccy], ccy, lang, 0)}</div>}
           </div>
         </>
       )}

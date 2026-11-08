@@ -198,8 +198,11 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], intervalMs?: 
   return { data, error, loading, reload };
 }
 
-/** Rupiah input: "1.000.000", "1,000,000" and "1000000" all mean one million. */
-export function parseIdr(s: string): number {
+/**
+ * Money input in either currency: "1.000.000", "1,000,000" and "1000000" all mean one million,
+ * while "100,50" and "100.50" are both 100.5.
+ */
+export function parseMoney(s: string): number {
   const n = s.replace(/\s/g, '').replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.');
   const v = Number(n);
   return n !== '' && Number.isFinite(v) ? v : NaN;

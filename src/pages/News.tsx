@@ -1,6 +1,7 @@
 import { Card, ErrorBox, Loading, Num, Seg, Updated, useAsync } from '../components/ui';
 import { getNews, getWhales, type NewsItem, type WhaleTx } from '../lib/api';
-import { ago, compact, num, short } from '../lib/format';
+import { ago, num, short } from '../lib/format';
+import { compactMoney } from '../lib/money';
 import { useApp, type Key } from '../lib/i18n';
 import { usePrice } from '../lib/price';
 import { useStored } from '../lib/storage';
@@ -102,7 +103,7 @@ function Headlines() {
 }
 
 function Whales() {
-  const { t, lang } = useApp();
+  const { t, lang, ccy } = useApp();
   const { price } = usePrice();
   const [min, setMin] = useStored<number>('ui.whaleMin', 100);
   const w = useAsync(() => getWhales(min), [min], 2 * 60_000);
@@ -132,7 +133,7 @@ function Whales() {
                     <div className="num text-base font-semibold">
                       <Num value={x.btc} format={(v) => `${num(v, lang, 2)} BTC`} />
                     </div>
-                    {price && <div className="num text-xs text-muted">≈ Rp {compact(x.btc * price.idr, lang)}</div>}
+                    {price && <div className="num text-xs text-muted">≈ {compactMoney(x.btc * price[ccy], ccy, lang)}</div>}
                   </div>
                   <div className="text-right text-xs">
                     <span className={`rounded px-1.5 py-0.5 font-medium ${WHALE_FLOW[x.flow].cls}`}>{t(WHALE_FLOW[x.flow].key)}</span>

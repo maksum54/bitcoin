@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Btn, Card, Field, Num, Stat, parseBtc, parseIdr } from '../components/ui';
-import { computePortfolio, uid, type Tx } from '../lib/calc';
-import { btc, dateOnly, idr, num, pct } from '../lib/format';
+import { Btn, Card, Field, Num, Seg, Stat, parseBtc, parseMoney } from '../components/ui';
+import { computePortfolio, normalizeTx, uid, type Tx } from '../lib/calc';
+import { btc, dateOnly, num, pct } from '../lib/format';
 import { useApp } from '../lib/i18n';
+import { CCY_LABEL, money, type Ccy } from '../lib/money';
 import { useNav } from '../lib/nav';
 import { usePrice } from '../lib/price';
 import { exportBackup, importBackup, useStored } from '../lib/storage';
@@ -13,23 +14,29 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/** Number shown in an input: USD keeps cents, IDR is whole rupiah. */
+const inputNum = (v: number, ccy: Ccy, lang: 'id' | 'en') => num(ccy === 'usd' ? Math.round(v * 100) / 100 : Math.round(v), lang, ccy === 'usd' ? 2 : 0);
+
 export default function Portfolio() {
-  const { t, lang } = useApp();
+  const { t, lang, ccy, fx } = useApp();
   const { price } = usePrice();
   const { draft, clearDraft } = useNav();
-  const [txs, setTxs] = useStored<Tx[]>('txs', []);
+  const [stored, setTxs] = useStored<Tx[]>('txs', []);
+  const txs = stored.map(normalizeTx);
   const [editing, setEditing] = useState<Partial<Tx> | null>(null);
   const [msg, setMsg] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (draft && price) {
-      setEditing({ type: 'buy', date: draft.date < today() ? draft.date : today(), priceIdr: price.idr, btc: draft.totalIdr / price.idr, feeIdr: 0 });
+      const p = price[draft.ccy];
+      setEditing({ type: 'buy', date: draft.date < today() ? draft.date : today(), price: p, btc: draft.total / p, fee: 0, ccy: draft.ccy });
       clearDraft();
     }
   }, [draft, price, clearDraft]);
 
-  const s = computePortfolio(txs, price?.idr ?? 0);
+  const s = computePortfolio(txs, price?.[ccy] ?? 0, ccy, fx || 1);
+  const m = (v: number) => money(v, ccy, lang);
   const sorted = [...txs].sort((a, b) => b.date.localeCompare(a.date));
 
   const download = () => {
@@ -54,17 +61,18 @@ export default function Portfolio() {
       <Card className="lg:col-span-2">
         <div className="stagger grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Stat label={t('f.btc')} value={<Num value={s.btc} format={(v) => num(v, lang, 8)} />} sub={`${num(Math.round(s.btc * 1e8), lang)} sats`} />
-          <Stat label={t('f.value')} value={price ? <Num value={s.value} format={(v) => idr(v, lang)} /> : '–'} />
-          <Stat label={t('f.cost')} value={<Num value={s.costBasis} format={(v) => idr(v, lang)} />} />
-          <Stat label={t('f.avg')} value={s.avgPrice ? idr(s.avgPrice, lang) : '–'} sub={price ? `${t('f.useNow')}: ${idr(price.idr, lang)}` : undefined} />
+          <Stat label={t('f.value')} value={price ? <Num value={s.value} format={m} /> : '–'} />
+          <Stat label={t('f.cost')} value={<Num value={s.costBasis} format={m} />} />
+          <Stat label={t('f.avg')} value={s.avgPrice ? m(s.avgPrice) : '–'} sub={price ? `${t('f.useNow')}: ${m(price[ccy])}` : undefined} />
           <Stat
             label={t('f.unrealized')}
-            value={price && s.btc > 0 ? <Num value={s.unrealized} format={(v) => idr(v, lang)} /> : '–'}
+            value={price && s.btc > 0 ? <Num value={s.unrealized} format={m} /> : '–'}
             sub={price && s.btc > 0 ? pct(s.unrealizedPct, lang) : undefined}
             tone={s.btc > 0 && price ? (s.unrealized >= 0 ? 'up' : 'down') : null}
           />
-          <Stat label={t('f.realized')} value={idr(s.realized, lang)} sub={`${t('f.fees')}: ${idr(s.fees, lang)}`} tone={s.realized ? (s.realized > 0 ? 'up' : 'down') : null} />
+          <Stat label={t('f.realized')} value={m(s.realized)} sub={`${t('f.fees')}: ${m(s.fees)}`} tone={s.realized ? (s.realized > 0 ? 'up' : 'down') : null} />
         </div>
+        {s.converted && <p className="mt-3 text-xs text-muted">ⓘ {t('f.converted')}</p>}
       </Card>
 
       <Card title={t('f.add')}>
@@ -73,14 +81,17 @@ export default function Portfolio() {
             initial={editing}
             onCancel={() => setEditing(null)}
             onSave={(tx) => {
-              setTxs((all) => (all.some((x) => x.id === tx.id) ? all.map((x) => (x.id === tx.id ? tx : x)) : [...all, tx]));
+              setTxs((all) => {
+                const list = all.map(normalizeTx);
+                return list.some((x) => x.id === tx.id) ? list.map((x) => (x.id === tx.id ? tx : x)) : [...list, tx];
+              });
               setEditing(null);
             }}
           />
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            <Btn onClick={() => setEditing({ type: 'buy', date: today(), priceIdr: price?.idr, feeIdr: 0 })}>+ {t('f.buy')}</Btn>
-            <Btn kind="ghost" onClick={() => setEditing({ type: 'sell', date: today(), priceIdr: price?.idr, feeIdr: 0 })}>
+            <Btn onClick={() => setEditing({ type: 'buy', date: today(), price: price?.[ccy], fee: 0, ccy })}>+ {t('f.buy')}</Btn>
+            <Btn kind="ghost" onClick={() => setEditing({ type: 'sell', date: today(), price: price?.[ccy], fee: 0, ccy })}>
               − {t('f.sell')}
             </Btn>
           </div>
@@ -94,7 +105,11 @@ export default function Portfolio() {
           </Btn>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
         </div>
-        {msg && <p key={msg} className="anim-pop mt-2 text-sm text-accent">{msg}</p>}
+        {msg && (
+          <p key={msg} className="anim-pop mt-2 text-sm text-accent">
+            {msg}
+          </p>
+        )}
         <p className="mt-2 text-xs text-muted">{t('f.localNote')}</p>
       </Card>
 
@@ -108,8 +123,8 @@ export default function Portfolio() {
                 <tr>
                   <th className="py-2 font-normal">{t('f.date')}</th>
                   <th className="font-normal">{t('f.amount')}</th>
-                  <th className="font-normal">{t('f.price')}</th>
-                  <th className="font-normal">{t('f.total')}</th>
+                  <th className="font-normal">{t('f.price', { ccy: '' }).replace(' ()', '')}</th>
+                  <th className="font-normal">{t('f.total', { ccy: '' }).replace(' ()', '')}</th>
                   <th className="font-normal">{t('f.note')}</th>
                   <th />
                 </tr>
@@ -124,8 +139,8 @@ export default function Portfolio() {
                       {dateOnly(`${x.date}T00:00:00`, lang)}
                     </td>
                     <td>{btc(x.btc, lang)}</td>
-                    <td>{idr(x.priceIdr, lang)}</td>
-                    <td>{idr(x.btc * x.priceIdr + (x.type === 'buy' ? x.feeIdr : -x.feeIdr), lang)}</td>
+                    <td>{money(x.price, x.ccy, lang)}</td>
+                    <td>{money(x.btc * x.price + (x.type === 'buy' ? x.fee : -x.fee), x.ccy, lang)}</td>
                     <td className="max-w-40 truncate text-muted">{x.note}</td>
                     <td className="whitespace-nowrap text-right">
                       <button className="px-2 text-muted hover:text-fg" onClick={() => setEditing(x)} aria-label="edit">
@@ -134,7 +149,7 @@ export default function Portfolio() {
                       <button
                         className="px-2 text-muted hover:text-down"
                         aria-label={t('f.delete')}
-                        onClick={() => confirm(t('f.confirmDelete')) && setTxs((all) => all.filter((y) => y.id !== x.id))}
+                        onClick={() => confirm(t('f.confirmDelete')) && setTxs((all) => all.map(normalizeTx).filter((y) => y.id !== x.id))}
                       >
                         ✕
                       </button>
@@ -151,34 +166,47 @@ export default function Portfolio() {
 }
 
 function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (t: Tx) => void; onCancel: () => void }) {
-  const { t, lang } = useApp();
+  const { t, lang, ccy: appCcy } = useApp();
   const { price } = usePrice();
+  const [ccy, setCcy] = useState<Ccy>(initial.ccy ?? appCcy);
   const [type, setType] = useState<Tx['type']>(initial.type ?? 'buy');
   const [date, setDate] = useState(initial.date ?? today());
-  const [priceStr, setPriceStr] = useState(initial.priceIdr ? num(Math.round(initial.priceIdr), lang) : '');
+  const [priceStr, setPriceStr] = useState(initial.price ? inputNum(initial.price, ccy, lang) : '');
   const [btcStr, setBtcStr] = useState(initial.btc ? String(+initial.btc.toFixed(8)) : '');
-  const [totalStr, setTotalStr] = useState(initial.btc && initial.priceIdr ? num(Math.round(initial.btc * initial.priceIdr), lang) : '');
-  const [feeStr, setFeeStr] = useState(initial.feeIdr ? num(initial.feeIdr, lang) : '0');
+  const [totalStr, setTotalStr] = useState(initial.btc && initial.price ? inputNum(initial.btc * initial.price, ccy, lang) : '');
+  const [feeStr, setFeeStr] = useState(initial.fee ? inputNum(initial.fee, ccy, lang) : '0');
   const [note, setNote] = useState(initial.note ?? '');
   const [err, setErr] = useState('');
+  const L = { ccy: CCY_LABEL[ccy] };
 
   // Amount and total stay linked through the price; whichever the user edits last wins.
-  const fromTotal = (total: string, p = parseIdr(priceStr)) => {
-    const v = parseIdr(total);
+  const fromTotal = (total: string, p = parseMoney(priceStr)) => {
+    const v = parseMoney(total);
     if (Number.isFinite(v) && p > 0) setBtcStr(String(+(v / p).toFixed(8)));
   };
-  const fromBtc = (b: string, p = parseIdr(priceStr)) => {
+  const fromBtc = (b: string, p = parseMoney(priceStr)) => {
     const v = parseBtc(b);
-    if (Number.isFinite(v) && p > 0) setTotalStr(num(Math.round(v * p), lang));
+    if (Number.isFinite(v) && p > 0) setTotalStr(inputNum(v * p, ccy, lang));
+  };
+
+  // Switching currency on a new entry restarts the money fields at today's price.
+  const switchCcy = (c: Ccy) => {
+    setCcy(c);
+    if (price) {
+      setPriceStr(inputNum(price[c], c, lang));
+      const b = parseBtc(btcStr);
+      setTotalStr(Number.isFinite(b) ? inputNum(b * price[c], c, lang) : '');
+    }
+    setFeeStr('0');
   };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const p = parseIdr(priceStr);
+    const p = parseMoney(priceStr);
     const b = parseBtc(btcStr);
-    const f = parseIdr(feeStr || '0');
+    const f = parseMoney(feeStr || '0');
     if (!(p > 0) || !(b > 0) || !Number.isFinite(f) || f < 0) return setErr(t('f.invalid'));
-    onSave({ id: initial.id ?? uid(), type, date, priceIdr: p, btc: b, feeIdr: f, note: note.trim() || undefined });
+    onSave({ id: initial.id ?? uid(), type, date, price: p, btc: b, fee: f, ccy, note: note.trim() || undefined });
   };
 
   return (
@@ -195,20 +223,24 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
           </button>
         ))}
       </div>
+      <div className="col-span-2 flex items-center justify-between gap-2 text-xs text-muted">
+        {t('f.ccy')}
+        <Seg value={ccy} onChange={switchCcy} options={[{ v: 'usd', label: 'USD' }, { v: 'idr', label: 'IDR' }]} />
+      </div>
       <Field label={t('f.date')}>
         <input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)} required />
       </Field>
       <Field
         label={
-          <span className="flex justify-between">
-            {t('f.price')}
+          <span className="flex justify-between gap-1">
+            {t('f.price', L)}
             {price && (
               <button
                 type="button"
-                className="text-accent"
+                className="shrink-0 text-accent"
                 onClick={() => {
-                  setPriceStr(num(Math.round(price.idr), lang));
-                  fromTotal(totalStr, price.idr);
+                  setPriceStr(inputNum(price[ccy], ccy, lang));
+                  fromTotal(totalStr, price[ccy]);
                 }}
               >
                 {t('f.useNow')}
@@ -218,18 +250,18 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
         }
       >
         <input
-          inputMode="numeric"
+          inputMode="decimal"
           value={priceStr}
           onChange={(e) => {
             setPriceStr(e.target.value);
-            fromTotal(totalStr, parseIdr(e.target.value));
+            fromTotal(totalStr, parseMoney(e.target.value));
           }}
           required
         />
       </Field>
-      <Field label={t('f.total')}>
+      <Field label={t('f.total', L)}>
         <input
-          inputMode="numeric"
+          inputMode="decimal"
           value={totalStr}
           onChange={(e) => {
             setTotalStr(e.target.value);
@@ -248,8 +280,8 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
           required
         />
       </Field>
-      <Field label={t('f.fee')}>
-        <input inputMode="numeric" value={feeStr} onChange={(e) => setFeeStr(e.target.value)} />
+      <Field label={t('f.fee', L)}>
+        <input inputMode="decimal" value={feeStr} onChange={(e) => setFeeStr(e.target.value)} />
       </Field>
       <Field label={t('f.note')}>
         <input value={note} placeholder={t('f.notePh')} onChange={(e) => setNote(e.target.value)} maxLength={80} />

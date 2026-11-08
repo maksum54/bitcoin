@@ -1,27 +1,28 @@
 import { useState } from 'react';
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Btn, Card, ErrorBox, Field, Loading, Num, Seg, Stat, Updated, parseBtc, parseIdr, useAsync, useFlash } from '../components/ui';
+import { Btn, Card, ErrorBox, Field, Loading, Num, Seg, Stat, Updated, parseBtc, parseMoney, useAsync, useFlash } from '../components/ui';
 import { getChart } from '../lib/api';
 import { uid } from '../lib/calc';
-import { compact, dateOnly, dateTime, idr, num, pct, usd } from '../lib/format';
+import { compact, dateOnly, dateTime, num, pct } from '../lib/format';
 import { useApp } from '../lib/i18n';
-import { usePrice, type Alert } from '../lib/price';
+import { CCY_LABEL, compactMoney, money, type Ccy } from '../lib/money';
+import { normalizeAlert, usePrice, type Alert } from '../lib/price';
 import { useStored } from '../lib/storage';
 
 const RANGES = [1, 7, 30, 90, 365] as const;
 
 export default function Market() {
-  const { t, lang } = useApp();
+  const { t, lang, ccy: vs, setCcy: setVs } = useApp();
   const { price, at, stale, error, reload } = usePrice();
   const [days, setDays] = useStored<number>('ui.range', 30);
-  const [vs, setVs] = useStored<'idr' | 'usd'>('ui.vs', 'idr');
   const chart = useAsync(() => getChart(days, vs), [days, vs], 5 * 60_000);
-  const flash = useFlash(price ? (vs === 'idr' ? price.idr : price.usd) : undefined);
+  const flash = useFlash(price ? price[vs] : undefined);
 
   if (!price && error) return <ErrorBox onRetry={reload} />;
   if (!price) return <Loading />;
 
-  const fmt = (v: number) => (vs === 'idr' ? idr(v, lang) : usd(v, lang));
+  const fmt = (v: number) => money(v, vs, lang, 0);
+  const other: Ccy = vs === 'usd' ? 'idr' : 'usd';
   const change = vs === 'idr' ? price.idr_24h_change : price.usd_24h_change;
   const pts = chart.data?.data ?? [];
   const first = pts[0]?.p;
@@ -36,15 +37,15 @@ export default function Market() {
           <div>
             <div className="text-xs text-muted">Bitcoin · BTC</div>
             <div className={`num -mx-1 px-1 text-3xl font-bold sm:text-4xl ${flash}`}>
-              <Num value={vs === 'idr' ? price.idr : price.usd} format={fmt} />
+              <Num value={price[vs]} format={fmt} />
             </div>
             <div className="num mt-1 text-sm text-muted">
-              {vs === 'idr' ? usd(price.usd, lang) : idr(price.idr, lang)}{' '}
+              {money(price[other], other, lang, 0)}{' '}
               <span className={change >= 0 ? 'text-up' : 'text-down'}>{pct(change, lang)} (24h)</span>
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <Seg value={vs} onChange={setVs} options={[{ v: 'idr', label: 'IDR' }, { v: 'usd', label: 'USD' }]} />
+            <Seg value={vs} onChange={setVs} options={[{ v: 'usd', label: 'USD' }, { v: 'idr', label: 'IDR' }]} />
             <Seg value={days} onChange={setDays} options={RANGES.map((d) => ({ v: d, label: t(`m.range.${d}` as 'm.range.1') }))} />
           </div>
         </div>
@@ -96,11 +97,8 @@ export default function Market() {
         </div>
         <div className="stagger mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
           <Stat label={t('m.change24')} value={pct(change, lang)} tone={change >= 0 ? 'up' : 'down'} />
-          <Stat
-            label={t('m.marketCap')}
-            value={vs === 'idr' ? `Rp ${compact(price.idr_market_cap, lang)}` : `$${compact(price.usd_market_cap, lang)}`}
-          />
-          <Stat label={t('m.volume')} value={vs === 'idr' ? `Rp ${compact(price.idr_24h_vol, lang)}` : `$${compact(price.usd_24h_vol, lang)}`} />
+          <Stat label={t('m.marketCap')} value={compactMoney(vs === 'idr' ? price.idr_market_cap : price.usd_market_cap, vs, lang)} />
+          <Stat label={t('m.volume')} value={compactMoney(vs === 'idr' ? price.idr_24h_vol : price.usd_24h_vol, vs, lang)} />
         </div>
         <div className="mt-2 text-right">
           <Updated at={at} stale={stale} />
@@ -108,57 +106,90 @@ export default function Market() {
       </Card>
       <div className="stagger grid min-w-0 content-start gap-4">
         <Converter priceIdr={price.idr} priceUsd={price.usd} />
-        <Alerts priceIdr={price.idr} />
+        <Alerts price={price[vs]} />
       </div>
     </div>
   );
 }
 
 function Converter({ priceIdr, priceUsd }: { priceIdr: number; priceUsd: number }) {
-  const { t, lang } = useApp();
+  const { t, lang, ccy } = useApp();
+  const fmtUsd = (v: number) => num(v, lang, 2);
+  const fmtIdr = (v: number) => num(v, lang, 0);
   const [btcStr, setBtcStr] = useState('0.001');
-  const [idrStr, setIdrStr] = useState(() => num(0.001 * priceIdr, lang));
+  const [usdStr, setUsdStr] = useState(() => fmtUsd(0.001 * priceUsd));
+  const [idrStr, setIdrStr] = useState(() => fmtIdr(0.001 * priceIdr));
   const btcVal = parseBtc(btcStr);
-  const onBtc = (s: string) => {
-    setBtcStr(s);
-    const v = parseBtc(s);
-    if (Number.isFinite(v)) setIdrStr(num(v * priceIdr, lang));
+
+  const fromBtc = (v: number, skip?: Ccy) => {
+    if (skip) setBtcStr(String(+v.toFixed(8)));
+    if (skip !== 'usd') setUsdStr(fmtUsd(v * priceUsd));
+    if (skip !== 'idr') setIdrStr(fmtIdr(v * priceIdr));
   };
-  const onIdr = (s: string) => {
-    setIdrStr(s);
-    const v = parseIdr(s);
-    if (Number.isFinite(v)) setBtcStr(String(+(v / priceIdr).toFixed(8)));
-  };
+
+  const usdField = (
+    <Field key="usd" label="USD">
+      <input
+        inputMode="decimal"
+        value={usdStr}
+        onChange={(e) => {
+          setUsdStr(e.target.value);
+          const v = parseMoney(e.target.value);
+          if (Number.isFinite(v)) fromBtc(v / priceUsd, 'usd');
+        }}
+      />
+    </Field>
+  );
+  const idrField = (
+    <Field key="idr" label="IDR">
+      <input
+        inputMode="numeric"
+        value={idrStr}
+        onChange={(e) => {
+          setIdrStr(e.target.value);
+          const v = parseMoney(e.target.value);
+          if (Number.isFinite(v)) fromBtc(v / priceIdr, 'idr');
+        }}
+      />
+    </Field>
+  );
+
   return (
     <Card title={t('m.converter')}>
       <div className="grid gap-3">
         <Field label="BTC">
-          <input inputMode="decimal" value={btcStr} onChange={(e) => onBtc(e.target.value)} />
+          <input
+            inputMode="decimal"
+            value={btcStr}
+            onChange={(e) => {
+              setBtcStr(e.target.value);
+              const v = parseBtc(e.target.value);
+              if (Number.isFinite(v)) fromBtc(v);
+            }}
+          />
         </Field>
-        <Field label="IDR">
-          <input inputMode="numeric" value={idrStr} onChange={(e) => onIdr(e.target.value)} />
-        </Field>
-        <div className="num text-xs text-muted">
-          = {Number.isFinite(btcVal) ? num(Math.round(btcVal * 1e8), lang) : '–'} sats ·{' '}
-          {Number.isFinite(btcVal) ? usd(btcVal * priceUsd, lang, 2) : '–'}
-        </div>
+        {/* The currency the person buys with comes first. */}
+        {ccy === 'usd' ? [usdField, idrField] : [idrField, usdField]}
+        <div className="num text-xs text-muted">= {Number.isFinite(btcVal) ? num(Math.round(btcVal * 1e8), lang) : '–'} sats</div>
       </div>
     </Card>
   );
 }
 
-function Alerts({ priceIdr }: { priceIdr: number }) {
-  const { t, lang } = useApp();
-  const [alerts, setAlerts] = useStored<Alert[]>('alerts', []);
+function Alerts({ price }: { price: number }) {
+  const { t, lang, ccy } = useApp();
+  const [stored, setAlerts] = useStored<Alert[]>('alerts', []);
+  const alerts = stored.map(normalizeAlert);
   const [dir, setDir] = useState<Alert['dir']>('below');
   const [val, setVal] = useState('');
   const [perm, setPerm] = useState<string>(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission));
   const add = () => {
-    const v = parseIdr(val);
+    const v = parseMoney(val);
     if (!Number.isFinite(v) || v <= 0) return;
-    setAlerts((a) => [...a, { id: uid(), dir, priceIdr: v, active: true }]);
+    setAlerts((a) => [...a.map(normalizeAlert), { id: uid(), dir, price: v, ccy, active: true }]);
     setVal('');
   };
+  const step = ccy === 'usd' ? 1000 : 1e6;
   return (
     <Card title={t('m.alerts')}>
       <div className="grid gap-2">
@@ -168,8 +199,9 @@ function Alerts({ priceIdr }: { priceIdr: number }) {
             <option value="above">{t('m.above')}</option>
           </select>
           <input
-            inputMode="numeric"
-            placeholder={num(Math.round(priceIdr / 1e6) * 1e6, lang)}
+            inputMode="decimal"
+            aria-label={t('m.alertIn', { ccy: CCY_LABEL[ccy] })}
+            placeholder={`${ccy === 'usd' ? '$' : 'Rp'} ${num(Math.round(price / step) * step, lang)}`}
             value={val}
             onChange={(e) => setVal(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && add()}
@@ -186,10 +218,15 @@ function Alerts({ priceIdr }: { priceIdr: number }) {
           {alerts.map((a) => (
             <li key={a.id} className="anim-slide-down flex items-center justify-between gap-2 py-2">
               <span className={a.active ? '' : 'text-muted'}>
-                <span className={a.active ? 'inline-block animate-bounce [animation-duration:2s]' : ''}>{a.dir === 'above' ? '▲' : '▼'}</span> <span className="num">{idr(a.priceIdr, lang)}</span>
+                <span className={a.active ? 'inline-block animate-bounce [animation-duration:2s]' : ''}>{a.dir === 'above' ? '▲' : '▼'}</span>{' '}
+                <span className="num">{money(a.price, a.ccy, lang, 0)}</span>
                 {!a.active && <span className="ml-1 text-xs">({t('m.fired')})</span>}
               </span>
-              <button className="px-2 text-muted hover:text-down" aria-label={t('f.delete')} onClick={() => setAlerts((x) => x.filter((y) => y.id !== a.id))}>
+              <button
+                className="px-2 text-muted hover:text-down"
+                aria-label={t('f.delete')}
+                onClick={() => setAlerts((x) => x.map(normalizeAlert).filter((y) => y.id !== a.id))}
+              >
                 ✕
               </button>
             </li>

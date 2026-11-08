@@ -1,11 +1,23 @@
+import { convert, type Ccy } from './money';
+
 export interface Tx {
   id: string;
   date: string; // YYYY-MM-DD
   type: 'buy' | 'sell';
   btc: number;
-  priceIdr: number; // price per 1 BTC
-  feeIdr: number;
+  price: number; // price per 1 BTC, in `ccy`
+  fee: number; // in `ccy`
+  ccy: Ccy;
   note?: string;
+}
+
+/** Upgrades transactions saved before multi-currency support (they were always IDR). */
+export function normalizeTx(x: Tx | (Omit<Tx, 'price' | 'fee' | 'ccy'> & { priceIdr: number; feeIdr: number })): Tx {
+  if ('priceIdr' in x) {
+    const { priceIdr, feeIdr, ...rest } = x;
+    return { ...rest, price: priceIdr, fee: feeIdr ?? 0, ccy: 'idr' };
+  }
+  return x;
 }
 
 export interface PortfolioSummary {
@@ -19,10 +31,15 @@ export interface PortfolioSummary {
   totalIn: number; // all money spent on buys incl. fees
   totalOut: number; // all money received from sells net of fees
   fees: number;
+  /** True when some transactions were in another currency and converted at today's rate. */
+  converted: boolean;
 }
 
-/** Average-cost method: a sale removes cost in proportion to the BTC sold. */
-export function computePortfolio(txs: Tx[], priceIdr: number): PortfolioSummary {
+/**
+ * Average-cost method: a sale removes cost in proportion to the BTC sold.
+ * Everything is reported in `ccy`; transactions in the other currency are converted with `fx` (IDR per USD).
+ */
+export function computePortfolio(txs: Tx[], priceNow: number, ccy: Ccy = 'usd', fx = 1): PortfolioSummary {
   const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
   let held = 0;
   let cost = 0;
@@ -30,10 +47,14 @@ export function computePortfolio(txs: Tx[], priceIdr: number): PortfolioSummary 
   let totalIn = 0;
   let totalOut = 0;
   let fees = 0;
+  let converted = false;
   for (const t of sorted) {
-    fees += t.feeIdr;
+    if (t.ccy !== ccy) converted = true;
+    const px = convert(t.price, t.ccy, ccy, fx);
+    const fee = convert(t.fee, t.ccy, ccy, fx);
+    fees += fee;
     if (t.type === 'buy') {
-      const spent = t.btc * t.priceIdr + t.feeIdr;
+      const spent = t.btc * px + fee;
       held += t.btc;
       cost += spent;
       totalIn += spent;
@@ -41,7 +62,7 @@ export function computePortfolio(txs: Tx[], priceIdr: number): PortfolioSummary 
       const qty = Math.min(t.btc, held);
       if (qty <= 0) continue;
       const avg = cost / held;
-      const proceeds = qty * t.priceIdr - t.feeIdr;
+      const proceeds = qty * px - fee;
       realized += proceeds - avg * qty;
       cost -= avg * qty;
       held -= qty;
@@ -52,7 +73,7 @@ export function computePortfolio(txs: Tx[], priceIdr: number): PortfolioSummary 
     held = 0;
     cost = 0;
   }
-  const value = held * priceIdr;
+  const value = held * priceNow;
   const unrealized = value - cost;
   return {
     btc: held,
@@ -65,6 +86,7 @@ export function computePortfolio(txs: Tx[], priceIdr: number): PortfolioSummary 
     totalIn,
     totalOut,
     fees,
+    converted,
   };
 }
 
@@ -150,7 +172,8 @@ export function backtestDca(history: PricePoint[], amount: number, startMs: numb
 }
 
 export interface Plan {
-  monthlyIdr: number;
+  monthly: number; // in `ccy`
+  ccy: Ccy;
   startMonth: string; // YYYY-MM
   months: number;
   day: number;
@@ -167,6 +190,15 @@ export interface Projection {
   roiPct: number;
 }
 
+/** Upgrades plans saved before multi-currency support. */
+export function normalizePlan(p: Plan | (Omit<Plan, 'monthly' | 'ccy'> & { monthlyIdr: number })): Plan {
+  if ('monthlyIdr' in p) {
+    const { monthlyIdr, ...rest } = p;
+    return { ...rest, monthly: monthlyIdr, ccy: 'idr' };
+  }
+  return p;
+}
+
 /** Projects a plan if the price moves by a constant annual rate from today's price. Not a forecast. */
 export function projectPlan(plan: Plan, priceNow: number, annualPct: number, label: string): Projection {
   const monthly = Math.pow(1 + annualPct / 100, 1 / 12);
@@ -176,10 +208,10 @@ export function projectPlan(plan: Plan, priceNow: number, annualPct: number, lab
   let btcHeld = 0;
   let price = priceNow * Math.pow(monthly, monthsUntilStart);
   for (let i = 0; i < plan.months; i++) {
-    btcHeld += (plan.monthlyIdr * (1 - plan.feePct / 100)) / price;
+    btcHeld += (plan.monthly * (1 - plan.feePct / 100)) / price;
     if (i < plan.months - 1) price *= monthly;
   }
-  const invested = plan.monthlyIdr * plan.months;
+  const invested = plan.monthly * plan.months;
   const value = btcHeld * price;
   return { label, annualPct, invested, btc: btcHeld, endPrice: price, value, roiPct: ((value - invested) / invested) * 100 };
 }

@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { Lang } from './format';
+import type { Ccy } from './money';
 
 const id = {
   appName: 'BTC Nyicil',
@@ -10,6 +11,7 @@ const id = {
   'tab.news': 'Berita',
   'theme.toggle': 'Ganti tema terang/gelap',
   'lang.toggle': 'Ganti bahasa',
+  'ccy.toggle': 'Ganti mata uang (USD/IDR)',
   loading: 'Memuat…',
   error: 'Gagal memuat data.',
   retry: 'Coba lagi',
@@ -40,6 +42,7 @@ const id = {
   'm.below': 'Turun di bawah',
   'm.addAlert': 'Tambah alarm',
   'm.noAlerts': 'Belum ada alarm.',
+  'm.alertIn': 'Target harga ({ccy})',
   'm.alertNote': 'Alarm dicek tiap 60 detik selama aplikasi terbuka. Notifikasi saat aplikasi ditutup butuh server push (belum ada).',
   'm.enableNotif': 'Izinkan notifikasi',
   'm.alertFired': 'Harga BTC sekarang {price} ({dir} {target})',
@@ -47,7 +50,7 @@ const id = {
 
   // plan
   'p.title': 'Rencana nyicil',
-  'p.monthly': 'Cicilan per bulan (IDR)',
+  'p.monthly': 'Cicilan per bulan ({ccy})',
   'p.start': 'Mulai bulan',
   'p.months': 'Lama (bulan)',
   'p.day': 'Tanggal beli tiap bulan',
@@ -92,12 +95,12 @@ const id = {
   'f.buy': 'Beli',
   'f.sell': 'Jual',
   'f.date': 'Tanggal',
-  'f.price': 'Harga per 1 BTC (IDR)',
-  'f.total': 'Total (IDR)',
+  'f.price': 'Harga per 1 BTC ({ccy})',
+  'f.total': 'Total ({ccy})',
   'f.amount': 'Jumlah BTC',
-  'f.fee': 'Biaya (IDR)',
+  'f.fee': 'Biaya ({ccy})',
   'f.note': 'Catatan',
-  'f.notePh': 'mis. Indodax, Tokocrypto',
+  'f.notePh': 'mis. Binance, Indodax',
   'f.save': 'Simpan',
   'f.cancel': 'Batal',
   'f.delete': 'Hapus',
@@ -111,6 +114,8 @@ const id = {
   'f.restoreFail': 'File cadangan tidak valid.',
   'f.localNote': 'Semua data hanya tersimpan di perangkat ini. Cadangkan rutin supaya tidak hilang.',
   'f.invalid': 'Isi harga dan jumlah dengan benar.',
+  'f.converted': 'Sebagian transaksi dicatat dalam mata uang lain dan dikonversi dengan kurs hari ini (perkiraan).',
+  'f.ccy': 'Mata uang',
 
   // explorer
   'e.network': 'Jaringan Bitcoin',
@@ -192,6 +197,7 @@ const en: Record<Key, string> = {
   'tab.news': 'News',
   'theme.toggle': 'Toggle light/dark theme',
   'lang.toggle': 'Switch language',
+  'ccy.toggle': 'Switch currency (USD/IDR)',
   loading: 'Loading…',
   error: 'Failed to load data.',
   retry: 'Retry',
@@ -221,13 +227,14 @@ const en: Record<Key, string> = {
   'm.below': 'Falls below',
   'm.addAlert': 'Add alert',
   'm.noAlerts': 'No alerts yet.',
+  'm.alertIn': 'Target price ({ccy})',
   'm.alertNote': 'Alerts are checked every 60 seconds while the app is open. Alerts while closed need a push server (not set up yet).',
   'm.enableNotif': 'Allow notifications',
   'm.alertFired': 'BTC is now {price} ({dir} {target})',
   'm.fired': 'Triggered',
 
   'p.title': 'DCA plan',
-  'p.monthly': 'Monthly amount (IDR)',
+  'p.monthly': 'Monthly amount ({ccy})',
   'p.start': 'Start month',
   'p.months': 'Duration (months)',
   'p.day': 'Buy day of month',
@@ -271,12 +278,12 @@ const en: Record<Key, string> = {
   'f.buy': 'Buy',
   'f.sell': 'Sell',
   'f.date': 'Date',
-  'f.price': 'Price per 1 BTC (IDR)',
-  'f.total': 'Total (IDR)',
+  'f.price': 'Price per 1 BTC ({ccy})',
+  'f.total': 'Total ({ccy})',
   'f.amount': 'BTC amount',
-  'f.fee': 'Fee (IDR)',
+  'f.fee': 'Fee ({ccy})',
   'f.note': 'Note',
-  'f.notePh': 'e.g. Indodax, Tokocrypto',
+  'f.notePh': 'e.g. Binance, Coinbase',
   'f.save': 'Save',
   'f.cancel': 'Cancel',
   'f.delete': 'Delete',
@@ -290,6 +297,8 @@ const en: Record<Key, string> = {
   'f.restoreFail': 'Invalid backup file.',
   'f.localNote': 'All data is stored on this device only. Back it up regularly.',
   'f.invalid': 'Enter a valid price and amount.',
+  'f.converted': 'Some transactions were recorded in another currency and are converted at today’s rate (approximate).',
+  'f.ccy': 'Currency',
 
   'e.network': 'Bitcoin network',
   'e.height': 'Block height',
@@ -371,5 +380,15 @@ export function makeT(lang: Lang): T {
   };
 }
 
-export const AppCtx = createContext<{ lang: Lang; t: T }>({ lang: 'id', t: makeT('id') });
+export interface AppState {
+  lang: Lang;
+  t: T;
+  /** Currency the person buys with; drives prices, plan, portfolio and alerts. */
+  ccy: Ccy;
+  setCcy: (c: Ccy) => void;
+  /** IDR per 1 USD, derived from the live BTC price (0 until known). */
+  fx: number;
+}
+
+export const AppCtx = createContext<AppState>({ lang: 'id', t: makeT('id'), ccy: 'usd', setCcy: () => {}, fx: 0 });
 export const useApp = () => useContext(AppCtx);

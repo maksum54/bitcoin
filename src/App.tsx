@@ -2,10 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { InstallPrompt, OfflineBanner, UpdateBanner } from './components/Shell';
 import { Loading, Num, useAsync, useFlash } from './components/ui';
 import { getPrice } from './lib/api';
-import { idr, type Lang } from './lib/format';
+import { type Lang } from './lib/format';
 import { AppCtx, makeT, type Key } from './lib/i18n';
 import { NavCtx, TABS, type Draft, type Tab } from './lib/nav';
-import { dueAlerts, PriceCtx, type Alert } from './lib/price';
+import { money, type Ccy } from './lib/money';
+import { dueAlerts, normalizeAlert, PriceCtx, type Alert } from './lib/price';
 import { load, save, useStored } from './lib/storage';
 import Market from './pages/Market';
 
@@ -35,6 +36,7 @@ async function notify(title: string, body: string) {
 export default function App() {
   const [lang, setLang] = useStored<Lang>('lang', 'id');
   const [theme, setTheme] = useStored<'dark' | 'light'>('theme', 'light');
+  const [ccy, setCcy] = useStored<Ccy>('ccy', 'usd');
   const [tab, setTab] = useState<Tab>(tabFromHash);
   const [draft, setDraft] = useState<Draft | null>(null);
   const t = useMemo(() => makeT(lang), [lang]);
@@ -59,19 +61,21 @@ export default function App() {
   const clearDraft = useCallback(() => setDraft(null), []);
 
   const p = useAsync(getPrice, [], 60_000);
-  const headerFlash = useFlash(p.data?.data.idr);
+  const fx = p.data ? p.data.data.idr / p.data.data.usd : 0;
+  const headerFlash = useFlash(p.data?.data[ccy]);
 
   // Price alerts: checked on each price refresh while the app is open.
   useEffect(() => {
-    const price = p.data?.data.idr;
+    const price = p.data?.data;
     if (!price || p.data?.stale) return;
-    const alerts = load<Alert[]>('alerts', []);
+    const alerts = load<Alert[]>('alerts', []).map(normalizeAlert);
     const due = dueAlerts(alerts, price);
     if (!due.length) return;
     for (const a of due) {
+      const target = money(a.price, a.ccy, lang);
       notify(
-        `BTC ${a.dir === 'above' ? '▲' : '▼'} ${idr(a.priceIdr, lang)}`,
-        t('m.alertFired', { price: idr(price, lang), dir: a.dir === 'above' ? '≥' : '≤', target: idr(a.priceIdr, lang) }),
+        `BTC ${a.dir === 'above' ? '▲' : '▼'} ${target}`,
+        t('m.alertFired', { price: money(price[a.ccy], a.ccy, lang), dir: a.dir === 'above' ? '≥' : '≤', target }),
       );
     }
     const ids = new Set(due.map((a) => a.id));
@@ -87,7 +91,7 @@ export default function App() {
   );
 
   return (
-    <AppCtx.Provider value={{ lang, t }}>
+    <AppCtx.Provider value={{ lang, t, ccy, setCcy, fx }}>
       <PriceCtx.Provider value={priceState}>
         <NavCtx.Provider value={{ go, draft, clearDraft }}>
           <div className="mx-auto min-h-dvh max-w-6xl px-4 pb-28 sm:pb-10">
@@ -98,7 +102,7 @@ export default function App() {
                   <span>{t('appName')}</span>
                   {p.data && (
                     <span className={`num hidden rounded-lg bg-card px-2 py-0.5 text-sm font-medium text-accent sm:inline ${headerFlash}`}>
-                      <Num value={p.data.data.idr} format={(v) => idr(v, lang)} />
+                      <Num value={p.data.data[ccy]} format={(v) => money(v, ccy, lang, 0)} />
                     </span>
                   )}
                 </a>
@@ -114,6 +118,16 @@ export default function App() {
                   ))}
                 </nav>
                 <div className="flex items-center gap-1">
+                  <button
+                    className="rounded-lg border border-line px-2 py-1 text-xs font-semibold"
+                    onClick={() => setCcy(ccy === 'usd' ? 'idr' : 'usd')}
+                    aria-label={t('ccy.toggle')}
+                    title={t('ccy.toggle')}
+                  >
+                    <span key={ccy} className="anim-pop inline-block">
+                      {ccy === 'usd' ? '$ USD' : 'Rp IDR'}
+                    </span>
+                  </button>
                   <button
                     className="rounded-lg border border-line px-2 py-1 text-xs font-semibold"
                     onClick={() => setLang(lang === 'id' ? 'en' : 'id')}
