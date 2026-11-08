@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+:root,
+:root[data-theme="dark"] {
+  --bg: #0b0f14;
+  --card: #121821;
+  --card2: #18202b;
+  --line: #243041;
+  --fg: #e8edf3;
+  --muted: #8b98a9;
+  --accent: #f7a823;
+  --accent-fg: #1a1203;
+  --up: #22c55e;
+  --down: #f05252;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f6f4ef;
+  --card: #ffffff;
+  --card2: #f1eee6;
+  --line: #e2ddd1;
+  --fg: #17202b;
+  --muted: #5f6b7a;
+  --accent: #b86e00;
+  --accent-fg: #ffffff;
+  --up: #15803d;
+  --down: #c62828;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-card: var(--card);
+  --color-card2: var(--card2);
+  --color-line: var(--line);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+}
+body {
+  -webkit-tap-highlight-color: transparent;
+  font-feature-settings: "tnum";
+}
+input,
+select {
+  background: var(--card2);
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  width: 100%;
+  min-width: 0;
+  color: var(--fg);
+  font-size: 16px; /* prevents iOS zoom */
+}
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
