@@ -1,13 +1,15 @@
-import { useState } from 'react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { lazy, Suspense, useState } from 'react';
 import { Btn, Card, ErrorBox, Field, Loading, Num, Seg, Stat, Updated, parseBtc, parseMoney, useAsync, useFlash } from '../components/ui';
 import { getChart } from '../lib/api';
 import { uid } from '../lib/calc';
-import { compact, dateOnly, dateTime, num, pct } from '../lib/format';
+import { num, pct } from '../lib/format';
 import { useApp } from '../lib/i18n';
 import { CCY_LABEL, compactMoney, money, type Ccy } from '../lib/money';
 import { normalizeAlert, usePrice, type Alert } from '../lib/price';
 import { useStored } from '../lib/storage';
+
+// The chart library is the biggest chunk; load it after the price is already on screen.
+const PriceChart = lazy(() => import('../components/PriceChart'));
 
 const RANGES = [1, 7, 30, 90, 365] as const;
 
@@ -55,44 +57,9 @@ export default function Market() {
           ) : !pts.length ? (
             <Loading />
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={pts} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity={0.35} />
-                    <stop offset="100%" stopColor={color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="t"
-                  type="number"
-                  domain={['dataMin', 'dataMax']}
-                  tickFormatter={(v) =>
-                    days <= 1
-                      ? new Date(v).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
-                      : dateOnly(v, lang).replace(/ \d{4}$/, '')
-                  }
-                  tick={{ fill: 'var(--muted)', fontSize: 11 }}
-                  stroke="var(--line)"
-                  minTickGap={40}
-                />
-                <YAxis
-                  dataKey="p"
-                  domain={['auto', 'auto']}
-                  tickFormatter={(v) => compact(v, lang)}
-                  tick={{ fill: 'var(--muted)', fontSize: 11 }}
-                  stroke="var(--line)"
-                  width={52}
-                  orientation="right"
-                />
-                <Tooltip
-                  contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, color: 'var(--fg)' }}
-                  labelFormatter={(v) => dateTime(v as number, lang)}
-                  formatter={(v) => [fmt(v as number), 'BTC']}
-                />
-                <Area type="monotone" dataKey="p" stroke={color} strokeWidth={2} fill="url(#g)" animationDuration={900} animationEasing="ease-out" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <Suspense fallback={<Loading />}>
+              <PriceChart pts={pts} days={days} color={color} format={fmt} />
+            </Suspense>
           )}
         </div>
         <div className="stagger mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -134,7 +101,7 @@ function Converter({ priceIdr, priceUsd }: { priceIdr: number; priceUsd: number 
         value={usdStr}
         onChange={(e) => {
           setUsdStr(e.target.value);
-          const v = parseMoney(e.target.value);
+          const v = parseMoney(e.target.value, lang);
           if (Number.isFinite(v)) fromBtc(v / priceUsd, 'usd');
         }}
       />
@@ -147,7 +114,7 @@ function Converter({ priceIdr, priceUsd }: { priceIdr: number; priceUsd: number 
         value={idrStr}
         onChange={(e) => {
           setIdrStr(e.target.value);
-          const v = parseMoney(e.target.value);
+          const v = parseMoney(e.target.value, lang);
           if (Number.isFinite(v)) fromBtc(v / priceIdr, 'idr');
         }}
       />
@@ -184,7 +151,7 @@ function Alerts({ price }: { price: number }) {
   const [val, setVal] = useState('');
   const [perm, setPerm] = useState<string>(() => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission));
   const add = () => {
-    const v = parseMoney(val);
+    const v = parseMoney(val, lang);
     if (!Number.isFinite(v) || v <= 0) return;
     setAlerts((a) => [...a.map(normalizeAlert), { id: uid(), dir, price: v, ccy, active: true }]);
     setVal('');

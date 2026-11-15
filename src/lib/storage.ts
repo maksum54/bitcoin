@@ -58,8 +58,46 @@ export function exportBackup(): string {
   return JSON.stringify(data, null, 2);
 }
 
-export function importBackup(text: string): void {
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const posNum = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+const isCcy = (v: unknown) => v === 'usd' || v === 'idr';
+
+/** Shape checks per key, so a damaged or hand-edited file cannot break the app after a restore. */
+const VALID: Record<string, (v: unknown) => boolean> = {
+  txs: (v) =>
+    Array.isArray(v) &&
+    v.every(
+      (x) =>
+        isObj(x) &&
+        typeof x.id === 'string' &&
+        typeof x.date === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(x.date) &&
+        (x.type === 'buy' || x.type === 'sell') &&
+        posNum(x.btc) &&
+        (posNum(x.price) ? isCcy(x.ccy) : posNum(x.priceIdr)),
+    ),
+  plan: (v) => isObj(v) && (posNum(v.monthly) || posNum(v.monthlyIdr)) && typeof v.startMonth === 'string' && /^\d{4}-\d{2}$/.test(v.startMonth) && posNum(v.months) && posNum(v.day),
+  alerts: (v) => Array.isArray(v) && v.every((x) => isObj(x) && typeof x.id === 'string' && (x.dir === 'above' || x.dir === 'below') && (posNum(x.price) || posNum(x.priceIdr))),
+  watch: (v) => Array.isArray(v) && v.every((x) => isObj(x) && typeof x.addr === 'string'),
+  lang: (v) => v === 'id' || v === 'en',
+  theme: (v) => v === 'dark' || v === 'light',
+  ccy: isCcy,
+};
+
+/** Parses and checks a backup file. Throws when it is not a valid backup; nothing is written. */
+export function parseBackup(text: string): Record<string, unknown> {
   const data = JSON.parse(text);
-  if (data?.app !== 'btc-nyicil') throw new Error('bad file');
-  for (const k of USER_KEYS) if (data[k] != null) save(k, data[k]);
+  if (!isObj(data) || data.app !== 'btc-nyicil') throw new Error('bad file');
+  const out: Record<string, unknown> = {};
+  for (const k of USER_KEYS) {
+    if (data[k] == null) continue;
+    if (!VALID[k](data[k])) throw new Error(`bad ${k}`);
+    out[k] = data[k];
+  }
+  return out;
+}
+
+export function importBackup(text: string): void {
+  const data = parseBackup(text);
+  for (const k of Object.keys(data)) save(k, data[k]);
 }

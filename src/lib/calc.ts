@@ -22,7 +22,7 @@ export function normalizeTx(x: Tx | (Omit<Tx, 'price' | 'fee' | 'ccy'> & { price
 
 export interface PortfolioSummary {
   btc: number;
-  costBasis: number; // IDR still "in" the position (average-cost method)
+  costBasis: number; // money still "in" the position (average-cost method)
   avgPrice: number;
   value: number;
   unrealized: number;
@@ -33,6 +33,55 @@ export interface PortfolioSummary {
   fees: number;
   /** True when some transactions were in another currency and converted at today's rate. */
   converted: boolean;
+  /** True when a sale was larger than the BTC held at that date (the excess is ignored). */
+  oversold: boolean;
+}
+
+interface Running {
+  held: number;
+  cost: number;
+  realized: number;
+  totalIn: number;
+  totalOut: number;
+  fees: number;
+  converted: boolean;
+  oversold: boolean;
+}
+
+const newRunning = (): Running => ({ held: 0, cost: 0, realized: 0, totalIn: 0, totalOut: 0, fees: 0, converted: false, oversold: false });
+
+/** Oldest first; on the same day buys come before sells, so a same-day sale can use that day's purchase. */
+export const sortTxs = (txs: Tx[]) =>
+  [...txs].sort((a, b) => a.date.localeCompare(b.date) || (a.type === b.type ? 0 : a.type === 'buy' ? -1 : 1));
+
+function applyTx(r: Running, t: Tx, ccy: Ccy, fx: number): void {
+  if (t.ccy !== ccy) r.converted = true;
+  const px = convert(t.price, t.ccy, ccy, fx);
+  if (t.type === 'buy') {
+    const fee = convert(t.fee, t.ccy, ccy, fx);
+    const spent = t.btc * px + fee;
+    r.held += t.btc;
+    r.cost += spent;
+    r.totalIn += spent;
+    r.fees += fee;
+    return;
+  }
+  if (t.btc > r.held + 1e-9) r.oversold = true;
+  const qty = Math.min(t.btc, r.held);
+  if (qty <= 0) return;
+  // Only the part that could actually be sold counts, so its share of the fee does too.
+  const fee = convert(t.fee, t.ccy, ccy, fx) * (qty / t.btc);
+  const avg = r.cost / r.held;
+  const proceeds = qty * px - fee;
+  r.realized += proceeds - avg * qty;
+  r.cost -= avg * qty;
+  r.held -= qty;
+  r.totalOut += proceeds;
+  r.fees += fee;
+  if (r.held < 1e-12) {
+    r.held = 0;
+    r.cost = 0;
+  }
 }
 
 /**
@@ -40,53 +89,23 @@ export interface PortfolioSummary {
  * Everything is reported in `ccy`; transactions in the other currency are converted with `fx` (IDR per USD).
  */
 export function computePortfolio(txs: Tx[], priceNow: number, ccy: Ccy = 'usd', fx = 1): PortfolioSummary {
-  const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
-  let held = 0;
-  let cost = 0;
-  let realized = 0;
-  let totalIn = 0;
-  let totalOut = 0;
-  let fees = 0;
-  let converted = false;
-  for (const t of sorted) {
-    if (t.ccy !== ccy) converted = true;
-    const px = convert(t.price, t.ccy, ccy, fx);
-    const fee = convert(t.fee, t.ccy, ccy, fx);
-    fees += fee;
-    if (t.type === 'buy') {
-      const spent = t.btc * px + fee;
-      held += t.btc;
-      cost += spent;
-      totalIn += spent;
-    } else {
-      const qty = Math.min(t.btc, held);
-      if (qty <= 0) continue;
-      const avg = cost / held;
-      const proceeds = qty * px - fee;
-      realized += proceeds - avg * qty;
-      cost -= avg * qty;
-      held -= qty;
-      totalOut += proceeds;
-    }
-  }
-  if (held < 1e-12) {
-    held = 0;
-    cost = 0;
-  }
-  const value = held * priceNow;
-  const unrealized = value - cost;
+  const r = newRunning();
+  for (const t of sortTxs(txs)) applyTx(r, t, ccy, fx);
+  const value = r.held * priceNow;
+  const unrealized = value - r.cost;
   return {
-    btc: held,
-    costBasis: cost,
-    avgPrice: held > 0 ? cost / held : 0,
+    btc: r.held,
+    costBasis: r.cost,
+    avgPrice: r.held > 0 ? r.cost / r.held : 0,
     value,
     unrealized,
-    unrealizedPct: cost > 0 ? (unrealized / cost) * 100 : 0,
-    realized,
-    totalIn,
-    totalOut,
-    fees,
-    converted,
+    unrealizedPct: r.cost > 0 ? (unrealized / r.cost) * 100 : 0,
+    realized: r.realized,
+    totalIn: r.totalIn,
+    totalOut: r.totalOut,
+    fees: r.fees,
+    converted: r.converted,
+    oversold: r.oversold,
   };
 }
 
@@ -108,6 +127,38 @@ export function priceAt(history: PricePoint[], t: number): number | null {
     } else hi = mid - 1;
   }
   return ans;
+}
+
+export interface ValuePoint {
+  t: number;
+  value: number;
+  cost: number;
+}
+
+const dayMs = (date: string) => new Date(`${date}T00:00:00`).getTime();
+
+/**
+ * Value and cost basis of the portfolio over time, in `ccy`.
+ * `historyUsd` is a USD price series; values are converted with today's `fx` (IDR per USD).
+ */
+export function portfolioSeries(txs: Tx[], historyUsd: PricePoint[], ccy: Ccy, fx: number, nowMs = Date.now()): ValuePoint[] {
+  const sorted = sortTxs(txs);
+  if (!sorted.length || !historyUsd.length) return [];
+  const start = dayMs(sorted[0].date);
+  const times = [...new Set([...sorted.map((t) => dayMs(t.date)), ...historyUsd.map((h) => h.t).filter((t) => t > start && t < nowMs), nowMs])]
+    .filter((t) => t <= nowMs)
+    .sort((a, b) => a - b);
+  const rate = ccy === 'usd' ? 1 : fx;
+  const r = newRunning();
+  const out: ValuePoint[] = [];
+  let i = 0;
+  for (const t of times) {
+    while (i < sorted.length && dayMs(sorted[i].date) <= t) applyTx(r, sorted[i++], ccy, fx);
+    const p = priceAt(historyUsd, t);
+    if (p == null) continue;
+    out.push({ t, value: r.held * p * rate, cost: r.cost });
+  }
+  return out;
 }
 
 export interface DcaPoint {
@@ -223,6 +274,16 @@ export function planMonths(plan: Plan): string[] {
     const d = new Date(y, m - 1 + i, 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   });
+}
+
+/**
+ * The plan month (YYYY-MM) whose purchase is due and not recorded yet, or null.
+ * Due means: this month is part of the plan, today is on/after the buy day, and no buy is logged this month.
+ */
+export function dueInstallment(plan: Plan, txs: Tx[], now = new Date()): string | null {
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (!planMonths(plan).includes(month) || now.getDate() < plan.day) return null;
+  return txs.some((x) => x.type === 'buy' && x.date.startsWith(month)) ? null : month;
 }
 
 export const HALVING_INTERVAL = 210_000;

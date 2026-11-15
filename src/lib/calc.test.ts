@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { backtestDca, computePortfolio, halving, normalizePlan, normalizeTx, planMonths, priceAt, projectPlan, type Tx } from './calc';
+import { backtestDca, computePortfolio, dueInstallment, halving, normalizePlan, normalizeTx, planMonths, portfolioSeries, priceAt, projectPlan, type Plan, type Tx } from './calc';
+import { csvToTxs, sameTx, txsToCsv } from './csv';
+import { parseBackup } from './storage';
 import { convert, money, roundNice } from './money';
 import { dueAlerts, normalizeAlert, type Alert } from './price';
-import { parseBtc, parseMoney as parseIdr } from '../components/ui';
+import { parseBtc, parseMoney, parseMoney as parseIdr } from './parse';
 import { classifyQuery } from './api';
 import { classify, mergeNews, parseRss } from '../../server/news';
 import { toWhale } from '../../server/whales';
@@ -195,5 +197,104 @@ describe('USD support', () => {
     expect(convert(100, 'usd', 'idr', 16_000)).toBe(1_600_000);
     expect(roundNice(convert(1_000_000, 'idr', 'usd', 16_000), 'usd')).toBe(62.5);
     expect(roundNice(1_234_567, 'idr')).toBe(1_235_000);
+  });
+});
+
+describe('parseMoney ambiguity', () => {
+  it('never reads a fraction after a leading zero as thousands', () => {
+    expect(parseMoney('0.125', 'id')).toBe(0.125);
+    expect(parseMoney('0,125', 'en')).toBe(0.125);
+    expect(parseMoney('0.5', 'id')).toBe(0.5);
+  });
+  it('uses the UI language for a lone separator with three digits', () => {
+    expect(parseMoney('12.345', 'id')).toBe(12_345);
+    expect(parseMoney('12.345', 'en')).toBe(12.345);
+    expect(parseMoney('12,345', 'en')).toBe(12_345);
+    expect(parseMoney('12,345', 'id')).toBe(12.345);
+  });
+  it('handles mixed separators, decimals and currency prefixes', () => {
+    expect(parseMoney('98.500,25', 'id')).toBe(98_500.25);
+    expect(parseMoney('98,500.25', 'en')).toBe(98_500.25);
+    expect(parseMoney('100,50', 'id')).toBe(100.5);
+    expect(parseMoney('100.50', 'id')).toBe(100.5);
+    expect(parseMoney('Rp 1.650.000', 'id')).toBe(1_650_000);
+    expect(parseMoney('$99', 'en')).toBe(99);
+    expect(parseMoney('abc')).toBeNaN();
+    expect(parseMoney('1.2.3,4,5')).toBeNaN();
+  });
+});
+
+describe('portfolio edge cases', () => {
+  it('flags a sale larger than the holdings and charges only the sold share of the fee', () => {
+    const s = computePortfolio([tx({ date: '2027-01-01', btc: 1, price: 100, ccy: 'usd' }), tx({ date: '2027-01-02', type: 'sell', btc: 2, price: 150, fee: 10, ccy: 'usd' })], 150, 'usd');
+    expect(s.oversold).toBe(true);
+    expect(s.btc).toBe(0);
+    expect(s.fees).toBe(5);
+    expect(s.realized).toBe(45);
+  });
+  it('ignores the fee of a sale with nothing to sell', () => {
+    const s = computePortfolio([tx({ type: 'sell', btc: 1, price: 100, fee: 10, ccy: 'usd' })], 100, 'usd');
+    expect(s.oversold).toBe(true);
+    expect(s.fees).toBe(0);
+  });
+  it('lets a same-day sale use that day\'s purchase regardless of entry order', () => {
+    const s = computePortfolio([tx({ type: 'sell', btc: 1, price: 120, ccy: 'usd' }), tx({ type: 'buy', btc: 1, price: 100, ccy: 'usd' })], 120, 'usd');
+    expect(s.oversold).toBe(false);
+    expect(s.realized).toBe(20);
+  });
+  it('builds a value/cost series over time', () => {
+    const day = (d: string) => new Date(`${d}T00:00:00`).getTime();
+    const hist = [{ t: day('2026-12-01'), p: 100 }, { t: day('2027-01-10'), p: 200 }, { t: day('2027-01-20'), p: 300 }];
+    const pts = portfolioSeries([tx({ date: '2027-01-01', btc: 1, price: 100, ccy: 'usd' }), tx({ date: '2027-01-15', btc: 1, price: 200, ccy: 'usd' })], hist, 'usd', 1, day('2027-01-25'));
+    expect(pts.map((p) => [p.value, p.cost])).toEqual([[100, 100], [200, 100], [400, 300], [600, 300], [600, 300]]);
+    expect(portfolioSeries([], hist, 'usd', 1)).toEqual([]);
+  });
+});
+
+describe('plan reminder', () => {
+  const plan: Plan = { monthly: 100, ccy: 'usd', startMonth: '2027-01', months: 3, day: 10, feePct: 0 };
+  it('is due on/after the buy day when no buy is recorded that month', () => {
+    expect(dueInstallment(plan, [], new Date(2027, 1, 9))).toBeNull();
+    expect(dueInstallment(plan, [], new Date(2027, 1, 10))).toBe('2027-02');
+    expect(dueInstallment(plan, [tx({ date: '2027-02-03' })], new Date(2027, 1, 20))).toBeNull();
+    expect(dueInstallment(plan, [tx({ date: '2027-02-03', type: 'sell' })], new Date(2027, 1, 20))).toBe('2027-02');
+    expect(dueInstallment(plan, [], new Date(2027, 3, 20))).toBeNull(); // plan ended in March
+  });
+});
+
+describe('CSV', () => {
+  it('round-trips transactions, including awkward notes', () => {
+    const src = [tx({ date: '2027-01-05', btc: 0.0011, price: 91000, fee: 0.3, ccy: 'usd', note: 'Binance, "promo"' }), tx({ date: '2027-02-05', type: 'sell', btc: 0.0005, price: 1.6e9, ccy: 'idr', note: '=cmd' })];
+    const csv = txsToCsv(src);
+    expect(csv.split('\n')[0]).toBe('date,type,btc,price,fee,currency,note');
+    expect(csv).toContain("'=cmd"); // not runnable as a spreadsheet formula
+    const back = csvToTxs(csv);
+    expect(back.skipped).toEqual([]);
+    expect(back.txs.map(({ id: _id, ...r }) => r)).toEqual(src.map(({ id: _id, ...r }) => r));
+    expect(sameTx(back.txs[0], src[0])).toBe(true);
+  });
+  it('accepts Indonesian headers and ";" and reports bad rows', () => {
+    const r = csvToTxs('Tanggal;Jenis;Jumlah;Harga\n2027-01-05;beli;0.01;1500000000\n2027-13-99;beli;0.01;1\n2027-01-06;tukar;1;1\n');
+    expect(r.txs).toHaveLength(1);
+    expect(r.txs[0]).toMatchObject({ type: 'buy', btc: 0.01, ccy: 'usd', fee: 0 });
+    expect(r.skipped).toEqual([3, 4]);
+  });
+  it('rejects files without the required columns', () => {
+    expect(() => csvToTxs('a,b\n1,2\n')).toThrow();
+    expect(() => csvToTxs('')).toThrow();
+  });
+});
+
+describe('backup validation', () => {
+  const ok = { app: 'btc-nyicil', txs: [{ id: 'a', date: '2027-01-01', type: 'buy', btc: 0.01, price: 100, fee: 0, ccy: 'usd' }], lang: 'id' };
+  it('accepts a good file and old IDR-only records', () => {
+    expect(Object.keys(parseBackup(JSON.stringify(ok)))).toEqual(['txs', 'lang']);
+    expect(() => parseBackup(JSON.stringify({ app: 'btc-nyicil', txs: [{ id: 'a', date: '2027-01-01', type: 'buy', btc: 0.01, priceIdr: 1e9, feeIdr: 0 }] }))).not.toThrow();
+  });
+  it('rejects foreign or damaged files', () => {
+    expect(() => parseBackup('{"app":"other"}')).toThrow();
+    expect(() => parseBackup(JSON.stringify({ ...ok, txs: [{ id: 'a', date: 'yesterday', type: 'buy', btc: 1, price: 1, ccy: 'usd' }] }))).toThrow();
+    expect(() => parseBackup(JSON.stringify({ ...ok, txs: 'nope' }))).toThrow();
+    expect(() => parseBackup(JSON.stringify({ ...ok, theme: 'pink' }))).toThrow();
   });
 });

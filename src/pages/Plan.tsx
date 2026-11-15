@@ -52,7 +52,7 @@ export default function PlanPage() {
                 value={monthlyStr}
                 onChange={(e) => {
                   setMonthlyStr(e.target.value);
-                  const v = parseMoney(e.target.value);
+                  const v = parseMoney(e.target.value, lang);
                   if (Number.isFinite(v) && v > 0) upd({ monthly: v });
                 }}
                 onBlur={() => setMonthlyStr(num(plan.monthly, lang, 2))}

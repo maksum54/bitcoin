@@ -10,7 +10,7 @@ PWA untuk persiapan nyicil (DCA) Bitcoin: pantau harga, rencanakan cicilan, cata
 | --- | --- |
 | **Pasar** | Harga BTC (USD/IDR), grafik 24 jam–1 tahun, konverter BTC ↔ USD ↔ IDR ↔ sats, alarm harga (USD atau IDR) |
 | **Nyicil** | Rencana cicilan bulanan (default mulai Januari tahun depan), proyeksi 3 skenario, jadwal yang otomatis tercentang, simulasi DCA dengan data historis sejak 2011 |
-| **Portofolio** | Catat beli/jual, harga rata-rata, untung/rugi (metode average cost), backup/restore JSON |
+| **Portofolio** | Catat beli/jual, harga rata-rata, untung/rugi (metode average cost), grafik nilai vs modal, backup/restore JSON, ekspor/impor CSV |
 | **Explorer** | Cari alamat / txid / blok, biaya jaringan, mempool, hashrate, hitung mundur halving, daftar alamat yang dipantau |
 | **Berita** | Berita Institusi & ETF / Whale / Pasar dengan label **beli/inflow** dan **jual/outflow**, plus transaksi besar on-chain (≥ 50–1.000 BTC) dengan label masuk/keluar exchange |
 
@@ -40,7 +40,11 @@ npm run dev
 
 Buka http://localhost:5173. Endpoint `/api/news` dan `/api/whales` ikut jalan di mode dev.
 
-Test & build:
+Lint, test & build:
+
+```bash
+npm run lint
+```
 
 ```bash
 npm test
@@ -61,6 +65,14 @@ Setelah itu buka URL-nya di HP → muncul tombol **Pasang** (Android/Chrome) ata
 ## Penyimpanan data
 
 Semua data (transaksi, rencana, alarm, alamat dipantau) tersimpan di `localStorage` perangkat. Belum ada sinkronisasi cloud, jadi gunakan **Portofolio → Cadangkan (JSON)** secara rutin, dan **Pulihkan dari file** untuk memindahkan data ke perangkat lain.
+
+## Impor CSV
+
+Baris pertama harus header. Kolom wajib: `date` (YYYY-MM-DD), `type` (`buy`/`sell`), `btc`, `price`. Opsional: `fee`, `currency` (`USD`/`IDR`, default USD), `note`. Angka memakai titik sebagai desimal. Transaksi yang sudah ada dilewati, jadi aman mengimpor file yang sama dua kali.
+
+## Pengingat cicilan
+
+Kalau rencana nyicil sudah disimpan dan tanggal beli bulan ini sudah lewat tanpa transaksi beli, muncul banner pengingat (dan satu notifikasi per bulan bila izin notifikasi aktif). Seperti alarm harga, ini hanya berjalan saat aplikasi dibuka.
 
 ## Batasan saat ini
 

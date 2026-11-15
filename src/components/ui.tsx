@@ -117,6 +117,8 @@ export function Seg<V extends string | number>({ value, options, onChange }: { v
       {options.map((o) => (
         <button
           key={String(o.v)}
+          type="button"
+          aria-pressed={o.v === value}
           onClick={() => onChange(o.v)}
           className={`rounded-lg px-2.5 py-1 text-xs font-medium duration-300 ${o.v === value ? 'bg-accent text-accent-fg shadow-sm scale-105' : 'text-muted hover:text-fg'}`}
         >
@@ -198,19 +200,4 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[], intervalMs?: 
   return { data, error, loading, reload };
 }
 
-/**
- * Money input in either currency: "1.000.000", "1,000,000" and "1000000" all mean one million,
- * while "100,50" and "100.50" are both 100.5.
- */
-export function parseMoney(s: string): number {
-  const n = s.replace(/\s/g, '').replace(/[.,](?=\d{3}(\D|$))/g, '').replace(',', '.');
-  const v = Number(n);
-  return n !== '' && Number.isFinite(v) ? v : NaN;
-}
-
-/** BTC input: "0,005" and "0.005" are both decimals. */
-export function parseBtc(s: string): number {
-  const n = s.replace(/\s/g, '').replace(',', '.');
-  const v = Number(n);
-  return n !== '' && Number.isFinite(v) ? v : NaN;
-}
+export { parseBtc, parseMoney } from '../lib/parse';

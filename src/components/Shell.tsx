@@ -1,6 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
+import { dueInstallment, normalizePlan, normalizeTx, type Plan, type Tx } from '../lib/calc';
+import { monthLabel } from '../lib/format';
 import { useApp } from '../lib/i18n';
+import { money } from '../lib/money';
+import { useNav } from '../lib/nav';
 import { useStored } from '../lib/storage';
 import { Btn } from './ui';
 
@@ -107,4 +111,74 @@ export function UpdateBanner() {
       <Btn onClick={() => updateServiceWorker(true)}>{t('update.reload')}</Btn>
     </div>
   );
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Reminds about this month's planned purchase once its day has come and no buy is recorded.
+ * Only for people who saved a plan; shown while the app is open (plus one notification per month if allowed).
+ */
+export function PlanReminder() {
+  const { t, lang } = useApp();
+  const { go } = useNav();
+  const [stored] = useStored<Plan | null>('plan', null);
+  const [txs] = useStored<Tx[]>('txs', []);
+  const [dismissed, setDismissed] = useStored<string>('remind.dismissed', '');
+  const [notified, setNotified] = useStored<string>('remind.notified', '');
+  const plan = stored ? normalizePlan(stored) : null;
+  const month = plan ? dueInstallment(plan, txs.map(normalizeTx)) : null;
+  const text = plan && month ? t('remind.text', { month: monthLabel(`${month}-01T00:00:00`, lang), amount: money(plan.monthly, plan.ccy, lang) }) : '';
+
+  useEffect(() => {
+    if (!month || notified === month || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    setNotified(month);
+    navigator.serviceWorker
+      ?.getRegistration()
+      .then((reg) => reg?.showNotification(t('remind.title'), { body: text, icon: '/pwa-192.png', badge: '/pwa-192.png', tag: 'btc-plan' }))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [month]);
+
+  if (!plan || !month || dismissed === month) return null;
+  const now = new Date();
+  const date = `${month}-${pad(Math.min(now.getDate(), 31))}`;
+  return (
+    <div className="anim-slide-down mb-4 flex items-center justify-between gap-2 rounded-xl border border-accent/50 bg-accent/10 p-3 text-sm">
+      <span>🗓️ {text}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        <Btn onClick={() => go('portfolio', { date, total: plan.monthly, ccy: plan.ccy })}>{t('remind.record')}</Btn>
+        <button className="px-2 text-muted hover:text-fg" aria-label={t('remind.dismiss')} onClick={() => setDismissed(month)}>
+          ✕
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/** Last-resort screen so a crash in one page does not leave a blank app. Saved data is untouched. */
+export class ErrorBoundary extends Component<{ children: ReactNode }, { error: unknown }> {
+  state = { error: null as unknown };
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+  componentDidCatch(error: unknown) {
+    console.error(error);
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    const en = document.documentElement.lang === 'en';
+    return (
+      <div className="mx-auto grid min-h-dvh max-w-md place-content-center gap-3 p-6 text-center">
+        <h1 className="text-lg font-bold">{en ? 'Something went wrong' : 'Terjadi kesalahan'}</h1>
+        <p className="text-sm text-muted">
+          {en ? 'Your saved data is safe. Reload to continue.' : 'Data yang tersimpan tetap aman. Muat ulang untuk melanjutkan.'}
+        </p>
+        <p className="break-words font-mono text-xs text-muted">{String(this.state.error).slice(0, 200)}</p>
+        <button className="mx-auto rounded-xl bg-accent px-4 py-2 text-sm font-medium text-accent-fg" onClick={() => location.reload()}>
+          {en ? 'Reload' : 'Muat ulang'}
+        </button>
+      </div>
+    );
+  }
 }
