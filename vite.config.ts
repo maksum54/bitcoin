@@ -73,11 +73,5 @@ export default defineConfig({
       },
     }),
   ],
-  build: {
-    rollupOptions: {
-      output: { manualChunks: { charts: ['recharts'] } },
-    },
-    chunkSizeWarningLimit: 600,
-  },
   test: { environment: 'node' },
 } as Parameters<typeof defineConfig>[0]);

@@ -95,7 +95,7 @@ export function parseRss(xml: string, feed: Feed): NewsItem[] {
   for (const it of items as Record<string, unknown>[]) {
     let title = stripHtml(text(it.title));
     const link = text(it.link) || text(it.guid);
-    if (!title || !link) continue;
+    if (!title || !/^https?:\/\//i.test(link)) continue;
     let source = feed.name;
     if (feed.google) {
       const src = text(it.source);
@@ -143,5 +143,7 @@ export async function getNews() {
   const results = await Promise.allSettled(FEEDS.map(async (f) => parseRss(await fetchText(f.url), f)));
   const lists = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
   const failed = results.filter((r) => r.status === 'rejected').length;
+  // Every source down is an outage, not "no news": fail so nothing caches an empty list.
+  if (failed === FEEDS.length) throw new Error('all news sources failed');
   return { items: mergeNews(lists), sources: FEEDS.length, failed, updatedAt: new Date().toISOString() };
 }

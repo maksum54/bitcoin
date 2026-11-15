@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { InstallPrompt, OfflineBanner, UpdateBanner } from './components/Shell';
+import { InstallPrompt, OfflineBanner, PlanReminder, UpdateBanner } from './components/Shell';
 import { Loading, Num, useAsync, useFlash } from './components/ui';
 import { getPrice } from './lib/api';
 import { type Lang } from './lib/format';
@@ -97,20 +97,24 @@ export default function App() {
           <div className="mx-auto min-h-dvh max-w-6xl px-4 pb-28 sm:pb-10">
             <header className="sticky top-0 z-20 -mx-4 mb-4 border-b border-line bg-bg/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur">
               <div className="flex h-14 items-center justify-between gap-3">
-                <a href="#market" className="flex items-center gap-2 font-bold">
-                  <img src="/favicon.svg" alt="" className="logo h-7 w-7" />
-                  <span>{t('appName')}</span>
-                  {p.data && (
-                    <span className={`num hidden rounded-lg bg-card px-2 py-0.5 text-sm font-medium text-accent sm:inline ${headerFlash}`}>
-                      <Num value={p.data.data[ccy]} format={(v) => money(v, ccy, lang, 0)} />
-                    </span>
-                  )}
+                <a href="#market" className="flex min-w-0 items-center gap-2 font-bold">
+                  <img src="/favicon.svg" alt="" className="logo h-7 w-7 shrink-0" />
+                  {/* Phone: price sits under the name so it is visible on every tab. */}
+                  <span className="flex min-w-0 flex-col leading-tight sm:flex-row sm:items-center sm:gap-2">
+                    <span className="truncate">{t('appName')}</span>
+                    {p.data && (
+                      <span className={`num text-xs font-medium text-accent sm:rounded-lg sm:bg-card sm:px-2 sm:py-0.5 sm:text-sm ${headerFlash}`}>
+                        <Num value={p.data.data[ccy]} format={(v) => money(v, ccy, lang, 0)} />
+                      </span>
+                    )}
+                  </span>
                 </a>
                 <nav className="hidden gap-1 sm:flex">
                   {TABS.map((k) => (
                     <a
                       key={k}
                       href={`#${k}`}
+                      aria-current={tab === k ? 'page' : undefined}
                       className={`press rounded-lg px-3 py-1.5 text-sm duration-300 ${tab === k ? 'bg-accent font-semibold text-accent-fg shadow-sm' : 'text-muted hover:bg-card hover:text-fg'}`}
                     >
                       {t(`tab.${k}` as Key)}
@@ -154,6 +158,7 @@ export default function App() {
 
             <OfflineBanner />
             <UpdateBanner />
+            {tab !== 'portfolio' && <PlanReminder />}
 
             <main key={tab} className="anim-page">
               <Suspense fallback={<Loading />}>
@@ -174,12 +179,12 @@ export default function App() {
 
             <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
               {TABS.map((k) => (
-                <a key={k} href={`#${k}`} className={`press relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
+                <a key={k} href={`#${k}`} aria-current={tab === k ? 'page' : undefined} className={`press relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
                   <span
                     className={`absolute top-0 h-0.5 rounded-full bg-accent transition-all duration-300 ${tab === k ? 'w-8 opacity-100' : 'w-0 opacity-0'}`}
                     aria-hidden
                   />
-                  <span className={`text-lg leading-none transition-transform duration-300 ${tab === k ? '-translate-y-0.5 scale-125' : ''}`}>{ICONS[k]}</span>
+                  <span aria-hidden className={`text-lg leading-none transition-transform duration-300 ${tab === k ? '-translate-y-0.5 scale-125' : ''}`}>{ICONS[k]}</span>
                   {t(`tab.${k}` as Key)}
                 </a>
               ))}

@@ -72,6 +72,7 @@ export async function getWhales(minBtc = 100) {
       return u.txs.map((t) => toWhale(t, minBtc, false, null));
     })(),
   ]);
+  if (latest.status === 'rejected' && mempool.status === 'rejected') throw new Error('all whale sources failed');
   const items = [latest, mempool]
     .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
     .filter((x): x is WhaleTx => x !== null)

@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
-import { Btn, Card, Field, Num, Seg, Stat, parseBtc, parseMoney } from '../components/ui';
-import { computePortfolio, normalizeTx, uid, type Tx } from '../lib/calc';
-import { btc, dateOnly, num, pct } from '../lib/format';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Area, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Btn, Card, Field, Num, Seg, Stat, parseBtc, parseMoney, useAsync } from '../components/ui';
+import { getLongHistoryUsd } from '../lib/api';
+import { computePortfolio, normalizeTx, portfolioSeries, uid, type Tx } from '../lib/calc';
+import { csvToTxs, sameTx, txsToCsv } from '../lib/csv';
+import { btc, compact, dateOnly, num, pct } from '../lib/format';
 import { useApp } from '../lib/i18n';
 import { CCY_LABEL, money, type Ccy } from '../lib/money';
 import { useNav } from '../lib/nav';
 import { usePrice } from '../lib/price';
-import { exportBackup, importBackup, useStored } from '../lib/storage';
+import { exportBackup, importBackup, parseBackup, useStored } from '../lib/storage';
 
 /** Local calendar date (toISOString would give yesterday's date in WIB before 07:00). */
 const today = () => {
@@ -26,6 +29,7 @@ export default function Portfolio() {
   const [editing, setEditing] = useState<Partial<Tx> | null>(null);
   const [msg, setMsg] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (draft && price) {
@@ -39,20 +43,34 @@ export default function Portfolio() {
   const m = (v: number) => money(v, ccy, lang);
   const sorted = [...txs].sort((a, b) => b.date.localeCompare(a.date));
 
-  const download = () => {
-    const blob = new Blob([exportBackup()], { type: 'application/json' });
+  const saveFile = (text: string, name: string, type: string) => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `btc-nyicil-backup-${today()}.json`;
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name;
     a.click();
     URL.revokeObjectURL(a.href);
   };
+  const download = () => saveFile(exportBackup(), `btc-nyicil-backup-${today()}.json`, 'application/json');
+  const downloadCsv = () => saveFile(txsToCsv(txs), `btc-nyicil-transaksi-${today()}.csv`, 'text/csv');
   const restore = async (f: File) => {
     try {
-      importBackup(await f.text());
+      const text = await f.text();
+      parseBackup(text); // reject a bad file before asking
+      if (!confirm(t('f.confirmRestore'))) return;
+      importBackup(text);
       setMsg(t('f.restored'));
     } catch {
       setMsg(t('f.restoreFail'));
+    }
+  };
+  const importCsv = async (f: File) => {
+    try {
+      const r = csvToTxs(await f.text());
+      const fresh = r.txs.filter((x) => !txs.some((y) => sameTx(x, y)));
+      if (fresh.length) setTxs((all) => [...all.map(normalizeTx), ...fresh]);
+      setMsg(t('f.csvDone', { n: fresh.length, dup: r.txs.length - fresh.length, bad: r.skipped.length }));
+    } catch {
+      setMsg(t('f.csvFail'));
     }
   };
 
@@ -72,7 +90,9 @@ export default function Portfolio() {
           />
           <Stat label={t('f.realized')} value={m(s.realized)} sub={`${t('f.fees')}: ${m(s.fees)}`} tone={s.realized ? (s.realized > 0 ? 'up' : 'down') : null} />
         </div>
+        {s.oversold && <p className="mt-3 rounded-lg border border-down/40 p-2 text-xs text-down">⚠️ {t('f.oversoldWarn')}</p>}
         {s.converted && <p className="mt-3 text-xs text-muted">ⓘ {t('f.converted')}</p>}
+        <ValueChart txs={txs} />
       </Card>
 
       <Card title={t('f.add')}>
@@ -81,10 +101,10 @@ export default function Portfolio() {
             initial={editing}
             onCancel={() => setEditing(null)}
             onSave={(tx) => {
-              setTxs((all) => {
-                const list = all.map(normalizeTx);
-                return list.some((x) => x.id === tx.id) ? list.map((x) => (x.id === tx.id ? tx : x)) : [...list, tx];
-              });
+              const next = txs.some((x) => x.id === tx.id) ? txs.map((x) => (x.id === tx.id ? tx : x)) : [...txs, tx];
+              // Refuse a change that would sell BTC that was not held yet (unless the data was already like that).
+              if (!s.oversold && computePortfolio(next, 0, ccy, fx || 1).oversold) return t('f.oversold');
+              setTxs(next);
               setEditing(null);
             }}
           />
@@ -103,7 +123,34 @@ export default function Portfolio() {
           <Btn kind="ghost" onClick={() => fileRef.current?.click()}>
             ⬆ {t('f.restore')}
           </Btn>
-          <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
+          <Btn kind="ghost" onClick={downloadCsv} disabled={!txs.length}>
+            ⬇ {t('f.csvExport')}
+          </Btn>
+          <Btn kind="ghost" onClick={() => csvRef.current?.click()}>
+            ⬆ {t('f.csvImport')}
+          </Btn>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = ''; // so the same file can be picked again
+              if (f) restore(f);
+            }}
+          />
+          <input
+            ref={csvRef}
+            type="file"
+            accept="text/csv,.csv"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) importCsv(f);
+            }}
+          />
         </div>
         {msg && (
           <p key={msg} className="anim-pop mt-2 text-sm text-accent">
@@ -118,7 +165,7 @@ export default function Portfolio() {
           <p className="py-4 text-center text-sm text-muted">{t('f.empty')}</p>
         ) : (
           <div className="-mx-4 overflow-x-auto px-4">
-            <table className="num w-full min-w-[560px] text-sm">
+            <table className="num w-full min-w-[640px] text-sm [&_td]:pr-4 [&_th]:pr-4 [&_td:last-child]:pr-0">
               <thead className="text-left text-xs text-muted">
                 <tr>
                   <th className="py-2 font-normal">{t('f.date')}</th>
@@ -143,7 +190,7 @@ export default function Portfolio() {
                     <td>{money(x.btc * x.price + (x.type === 'buy' ? x.fee : -x.fee), x.ccy, lang)}</td>
                     <td className="max-w-40 truncate text-muted">{x.note}</td>
                     <td className="whitespace-nowrap text-right">
-                      <button className="px-2 text-muted hover:text-fg" onClick={() => setEditing(x)} aria-label="edit">
+                      <button className="px-2 text-muted hover:text-fg" onClick={() => setEditing(x)} aria-label={t('f.edit')}>
                         ✎
                       </button>
                       <button
@@ -165,7 +212,51 @@ export default function Portfolio() {
   );
 }
 
-function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (t: Tx) => void; onCancel: () => void }) {
+function ValueChart({ txs }: { txs: Tx[] }) {
+  const { t, lang, ccy, fx } = useApp();
+  const { price } = usePrice();
+  const hist = useAsync(() => getLongHistoryUsd(), []);
+  const priceUsd = price?.usd;
+  const data = useMemo(() => {
+    if (!hist.data || !priceUsd || !txs.length || (ccy === 'idr' && !fx)) return [];
+    return portfolioSeries(txs, [...hist.data.data, { t: Date.now(), p: priceUsd }], ccy, fx);
+  }, [hist.data, priceUsd, txs, ccy, fx]);
+  if (data.length < 2) return null;
+  const m = (v: number) => money(v, ccy, lang);
+  return (
+    <div className="mt-4">
+      <h3 className="mb-1 text-xs text-muted">{t('f.chart')}</h3>
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+            <XAxis
+              dataKey="t"
+              type="number"
+              domain={['dataMin', 'dataMax']}
+              tickFormatter={(v) => dateOnly(v, lang).replace(/,? \d{4}$/, '')}
+              tick={{ fill: 'var(--muted)', fontSize: 11 }}
+              stroke="var(--line)"
+              minTickGap={40}
+            />
+            <YAxis tickFormatter={(v) => compact(v, lang)} tick={{ fill: 'var(--muted)', fontSize: 11 }} stroke="var(--line)" width={48} orientation="right" />
+            <Tooltip
+              contentStyle={{ background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, color: 'var(--fg)' }}
+              labelFormatter={(v) => dateOnly(v as number, lang)}
+              formatter={(v, n) => [m(v as number), n === 'value' ? t('f.value') : t('f.cost')]}
+            />
+            <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} fill="var(--accent)" fillOpacity={0.12} animationDuration={900} />
+            <Line type="stepAfter" dataKey="cost" stroke="var(--muted)" strokeWidth={2} strokeDasharray="4 3" dot={false} animationDuration={900} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+      <p className="mt-1 text-xs text-muted">
+        <span className="text-accent">━</span> {t('f.value')} · <span>┅</span> {t('f.cost')} · {t('f.chartNote')}
+      </p>
+    </div>
+  );
+}
+
+function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (t: Tx) => string | void; onCancel: () => void }) {
   const { t, lang, ccy: appCcy } = useApp();
   const { price } = usePrice();
   const [ccy, setCcy] = useState<Ccy>(initial.ccy ?? appCcy);
@@ -180,11 +271,11 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
   const L = { ccy: CCY_LABEL[ccy] };
 
   // Amount and total stay linked through the price; whichever the user edits last wins.
-  const fromTotal = (total: string, p = parseMoney(priceStr)) => {
-    const v = parseMoney(total);
+  const fromTotal = (total: string, p = parseMoney(priceStr, lang)) => {
+    const v = parseMoney(total, lang);
     if (Number.isFinite(v) && p > 0) setBtcStr(String(+(v / p).toFixed(8)));
   };
-  const fromBtc = (b: string, p = parseMoney(priceStr)) => {
+  const fromBtc = (b: string, p = parseMoney(priceStr, lang)) => {
     const v = parseBtc(b);
     if (Number.isFinite(v) && p > 0) setTotalStr(inputNum(v * p, ccy, lang));
   };
@@ -202,11 +293,12 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const p = parseMoney(priceStr);
+    const p = parseMoney(priceStr, lang);
     const b = parseBtc(btcStr);
-    const f = parseMoney(feeStr || '0');
+    const f = parseMoney(feeStr || '0', lang);
     if (!(p > 0) || !(b > 0) || !Number.isFinite(f) || f < 0) return setErr(t('f.invalid'));
-    onSave({ id: initial.id ?? uid(), type, date, price: p, btc: b, fee: f, ccy, note: note.trim() || undefined });
+    const problem = onSave({ id: initial.id ?? uid(), type, date, price: p, btc: b, fee: f, ccy, note: note.trim() || undefined });
+    if (problem) setErr(problem);
   };
 
   return (
@@ -254,7 +346,7 @@ function TxForm({ initial, onSave, onCancel }: { initial: Partial<Tx>; onSave: (
           value={priceStr}
           onChange={(e) => {
             setPriceStr(e.target.value);
-            fromTotal(totalStr, parseMoney(e.target.value));
+            fromTotal(totalStr, parseMoney(e.target.value, lang));
           }}
           required
         />
