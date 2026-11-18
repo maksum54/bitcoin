@@ -9,7 +9,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://data-api.binance.vision wss://data-stream.binance.vision https://api.coingecko.com https://mempool.space https://api.blockchain.info; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://data-api.binance.vision wss://data-stream.binance.vision wss://fstream.binance.com wss://stream.bybit.com wss://ws.okx.com:8443 wss://ws-feed.exchange.coinbase.com https://api.coingecko.com https://mempool.space https://api.blockchain.info; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
         },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },

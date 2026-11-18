@@ -1,77 +1,100 @@
-import { lazy, Suspense, useCallback, useMemo } from 'react';
-import { Card, ErrorBox, Loading, Seg, Stat } from '../components/ui';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { Loading, Stat } from '../components/ui';
 import { compact, num, pct } from '../lib/format';
 import { useApp, type Key } from '../lib/i18n';
 import { money } from '../lib/money';
-import { useStored } from '../lib/storage';
-import { cumulative, flow, groupBook, imbalance, INTERVALS, spread, stepDigits, type Book, type Interval, type Trade } from '../lib/terminal';
+import { load, save, useStored } from '../lib/storage';
+import { INTERVALS, REST, type Candle, type Interval } from '../lib/terminal';
 import { useTerminal, type Status } from '../lib/useTerminal';
+import { LiveCtx, TermCtx, useLiquidations, useMarkPrices } from '../terminal/data';
+import { settle, type Position } from '../terminal/journal';
+import { newAccount, onPrice, PAPER_SYMBOLS, type PaperState } from '../terminal/paper';
 
-const CandleChart = lazy(() => import('../components/CandleChart'));
+const ChartView = lazy(() => import('../terminal/views/ChartView'));
+const DomView = lazy(() => import('../terminal/views/DomView'));
+const ProfileView = lazy(() => import('../terminal/views/ProfileView'));
+const FlowView = lazy(() => import('../terminal/views/FlowView'));
+const SignalsView = lazy(() => import('../terminal/views/SignalsView'));
+const JournalView = lazy(() => import('../terminal/views/JournalView'));
+const PaperView = lazy(() => import('../terminal/views/PaperView'));
+const BacktestView = lazy(() => import('../terminal/views/BacktestView'));
 
-const INTERVAL_MS: Record<Interval, number> = { '1m': 60e3, '5m': 300e3, '15m': 900e3, '1h': 3600e3, '4h': 14400e3, '1d': 86400e3 };
-const STEPS = [0.01, 1, 10, 100] as const;
-const BIG_TRADE = 1; // BTC
+export const VIEWS = ['chart', 'dom', 'profile', 'flow', 'signals', 'journal', 'paper', 'backtest'] as const;
+export type View = (typeof VIEWS)[number];
+const VIEW_ICON: Record<View, string> = { chart: '🕯️', dom: '📚', profile: '🧱', flow: '💥', signals: '📡', journal: '📓', paper: '🎯', backtest: '🧪' };
 
 export default function Terminal() {
   const { t, lang, ccy, fx } = useApp();
-  const [interval, setIv] = useStored<Interval>('term.interval', '15m');
-  const [step, setStep] = useStored<number>('term.step', 10);
+  const [interval] = useStored<Interval>('term.interval', '15m');
+  const [rawView, setView] = useStored<View>('term.view', 'chart');
+  const view: View = VIEWS.includes(rawView) ? rawView : 'chart';
   const iv: Interval = INTERVALS.includes(interval) ? interval : '15m';
   const d = useTerminal(iv);
+  const liq = useLiquidations();
+  const marks = useMarkPrices();
+  usePaperRunner(marks);
+  useJournalRunner();
+
   const last = d.trades[0]?.p ?? d.ticker?.last ?? d.candles[d.candles.length - 1]?.c;
-  // Price colour follows the side of the latest trade (a background flash every 100 ms is too busy).
   const tick = d.trades[0] ? (d.trades[0].buy ? 'text-up' : 'text-down') : '';
-  const fmt = useCallback((v: number) => num(v, lang, 2), [lang]);
 
   return (
-    <div className="stagger grid gap-4">
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              BTC/USDT · Binance <StatusDot status={d.status} />
+    <TermCtx.Provider value={d}>
+      <LiveCtx.Provider value={{ liqs: liq.liqs, liqLive: liq.live, marks }}>
+        <div className="grid gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-muted">
+                BTC/USDT · Binance <StatusDot status={d.status} />
+              </div>
+              <div className={`num text-2xl font-bold transition-colors sm:text-3xl ${tick}`}>
+                {last ? num(last, lang, 2) : '—'}
+                {last && ccy === 'idr' && fx > 0 && <span className="ml-2 text-sm font-normal text-muted">≈ {money(last * fx, 'idr', lang, 0)}</span>}
+              </div>
             </div>
-            <div className={`num -mx-1 px-1 text-3xl font-bold transition-colors ${tick}`}>{last ? num(last, lang, 2) : '—'}</div>
-            {last && ccy === 'idr' && fx > 0 && <div className="num text-sm text-muted">≈ {money(last * fx, 'idr', lang, 0)}</div>}
+            {d.ticker && (
+              <div className="grid basis-full grid-cols-4 gap-1.5 sm:max-w-xl sm:flex-1 sm:basis-auto [&_.text-base]:text-sm">
+                <Stat label={t('t.change24')} value={pct(d.ticker.changePct, lang)} tone={d.ticker.changePct >= 0 ? 'up' : 'down'} />
+                <Stat label={t('t.high24')} value={compact(d.ticker.high, lang)} />
+                <Stat label={t('t.low24')} value={compact(d.ticker.low, lang)} />
+                <Stat label={t('t.vol24')} value={compact(d.ticker.vol, lang)} />
+              </div>
+            )}
           </div>
-          <Seg value={iv} onChange={setIv} options={INTERVALS.map((v) => ({ v, label: v }))} />
-        </div>
-        {d.ticker && (
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat label={t('t.change24')} value={pct(d.ticker.changePct, lang)} tone={d.ticker.changePct >= 0 ? 'up' : 'down'} />
-            <Stat label={t('t.high24')} value={num(d.ticker.high, lang, 2)} />
-            <Stat label={t('t.low24')} value={num(d.ticker.low, lang, 2)} />
-            <Stat label={t('t.vol24')} value={`${compact(d.ticker.vol, lang)} BTC`} sub={`${compact(d.ticker.quoteVol, lang)} USDT`} />
-          </div>
-        )}
-        <div className="mt-3 h-[22rem] sm:h-[28rem]">
-          {d.error ? (
-            <ErrorBox msg={t('t.error')} />
-          ) : !d.candles.length ? (
-            <Loading rows={5} />
-          ) : (
-            <Suspense fallback={<Loading rows={5} />}>
-              <CandleChart candles={d.candles} intervalMs={INTERVAL_MS[iv]} fmt={fmt} lang={lang} />
+
+          <nav className="-mx-4 flex gap-1 overflow-x-auto px-4 pb-1 [scrollbar-width:none]" aria-label={t('x.views')}>
+            {VIEWS.map((v) => (
+              <button
+                key={v}
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={`press shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium ${view === v ? 'border-accent bg-accent text-accent-fg' : 'border-line text-muted hover:text-fg'}`}
+              >
+                <span aria-hidden>{VIEW_ICON[v]}</span> {t(`x.view.${v}` as Key)}
+              </button>
+            ))}
+          </nav>
+
+          <div key={view} className="anim-page">
+            <Suspense fallback={<Loading rows={6} />}>
+              {view === 'chart' && <ChartView />}
+              {view === 'dom' && <DomView />}
+              {view === 'profile' && <ProfileView />}
+              {view === 'flow' && <FlowView />}
+              {view === 'signals' && <SignalsView />}
+              {view === 'journal' && <JournalView />}
+              {view === 'paper' && <PaperView />}
+              {view === 'backtest' && <BacktestView />}
             </Suspense>
-          )}
+          </div>
+          <p className="text-xs text-muted">{t('t.note')}</p>
         </div>
-        <p className="mt-2 text-xs text-muted">{t('t.chartHint')}</p>
-      </Card>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={t('t.book')} right={<Seg value={step} onChange={setStep} options={STEPS.map((v) => ({ v, label: String(v) }))} />}>
-          {d.book ? <OrderBook book={d.book} step={step} /> : <Loading rows={6} />}
-        </Card>
-        <Card title={t('t.tape')}>{d.trades.length ? <Tape trades={d.trades} /> : <Loading rows={6} />}</Card>
-      </div>
-
-      <p className="text-xs text-muted">{t('t.note')}</p>
-    </div>
+      </LiveCtx.Provider>
+    </TermCtx.Provider>
   );
 }
 
-function StatusDot({ status }: { status: Status }) {
+export function StatusDot({ status }: { status: Status }) {
   const { t } = useApp();
   return (
     <span className={`inline-flex items-center gap-1 ${status === 'live' ? 'text-up' : 'text-accent'}`}>
@@ -81,107 +104,67 @@ function StatusDot({ status }: { status: Status }) {
   );
 }
 
-function OrderBook({ book, step }: { book: Book; step: number }) {
-  const { t, lang } = useApp();
-  const g = useMemo(() => groupBook(book, step, 10), [book, step]);
-  const bidCum = cumulative(g.bids);
-  const askCum = cumulative(g.asks);
-  const max = Math.max(bidCum[bidCum.length - 1] ?? 0, askCum[askCum.length - 1] ?? 0) || 1;
-  const sp = spread(book);
-  const imb = imbalance(book);
-  const digits = stepDigits(step);
-  const asks = g.asks.map((l, i) => ({ ...l, cum: askCum[i] })).reverse();
-  const bids = g.bids.map((l, i) => ({ ...l, cum: bidCum[i] }));
-
-  const Row = ({ p, q, cum, side }: { p: number; q: number; cum: number; side: 'bid' | 'ask' }) => (
-    <div className="relative grid grid-cols-3 px-1 py-[3px] text-xs">
-      <span
-        className={`absolute inset-y-0 right-0 ${side === 'bid' ? 'bg-up/15' : 'bg-down/15'} transition-[width] duration-200`}
-        style={{ width: `${(cum / max) * 100}%` }}
-        aria-hidden
-      />
-      <span className={`num relative ${side === 'bid' ? 'text-up' : 'text-down'}`}>{num(p, lang, digits)}</span>
-      <span className="num relative text-right">{q.toFixed(4)}</span>
-      <span className="num relative text-right text-muted">{cum.toFixed(3)}</span>
-    </div>
-  );
-
-  return (
-    <div>
-      <div className="grid grid-cols-3 px-1 pb-1 text-[11px] text-muted">
-        <span>{t('t.price')} (USDT)</span>
-        <span className="text-right">{t('t.size')} (BTC)</span>
-        <span className="text-right">{t('t.total')}</span>
-      </div>
-      {asks.map((l) => (
-        <Row key={`a${l.p}`} {...l} side="ask" />
-      ))}
-      <div className="my-1 flex items-center justify-between rounded-lg bg-card2 px-2 py-1.5 text-xs">
-        <span className="text-muted">{t('t.spread')}</span>
-        <span className="num">{sp ? `${num(sp.abs, lang, 2)} (${num(sp.pct, lang, 5)}%)` : '—'}</span>
-      </div>
-      {bids.map((l) => (
-        <Row key={`b${l.p}`} {...l} side="bid" />
-      ))}
-      {imb != null && (
-        <div className="mt-3">
-          <div className="mb-1 flex justify-between text-[11px] text-muted">
-            <span className="text-up">
-              {t('t.bids')} {Math.round(imb * 100)}%
-            </span>
-            <span className="text-down">
-              {Math.round((1 - imb) * 100)}% {t('t.asks')}
-            </span>
-          </div>
-          <div className="flex h-2 overflow-hidden rounded-full bg-down/60">
-            <div className="h-full bg-up transition-[width] duration-300" style={{ width: `${imb * 100}%` }} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
+/** Applies each new mark price to the paper account: liquidations, stops, targets, limit fills. */
+function usePaperRunner(marks: Partial<Record<(typeof PAPER_SYMBOLS)[number], number>>) {
+  useEffect(() => {
+    const s0 = load<PaperState>('paper', newAccount());
+    if (!Object.keys(s0.positions).length && !s0.orders.length) return;
+    let s = s0;
+    for (const sym of PAPER_SYMBOLS) if (marks[sym]) s = onPrice(s, sym, marks[sym]!);
+    if (s !== s0) save('paper', s);
+  }, [marks]);
 }
 
-function Tape({ trades }: { trades: Trade[] }) {
-  const { t, lang } = useApp();
-  const f = flow(trades);
-  const total = f.buy + f.sell || 1;
-  const timeFmt = useMemo(() => new Intl.DateTimeFormat(lang === 'id' ? 'id-ID' : 'en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }), [lang]);
-
-  return (
-    <div>
-      <div className="mb-3">
-        <div className="mb-1 flex justify-between text-[11px]">
-          <span className="text-up">
-            {t('t.buy')} {f.buy.toFixed(3)}
-          </span>
-          <span className={f.net >= 0 ? 'text-up' : 'text-down'}>
-            {t('t.net')} {f.net >= 0 ? '+' : ''}
-            {f.net.toFixed(3)} BTC
-          </span>
-          <span className="text-down">
-            {f.sell.toFixed(3)} {t('t.sell')}
-          </span>
-        </div>
-        <div className="flex h-2 overflow-hidden rounded-full bg-down/60">
-          <div className="h-full bg-up transition-[width] duration-300" style={{ width: `${(f.buy / total) * 100}%` }} />
-        </div>
-        <p className="mt-1 text-[11px] text-muted">{t('t.flowNote', { n: trades.length })}</p>
-      </div>
-      <div className="grid grid-cols-3 px-1 pb-1 text-[11px] text-muted">
-        <span>{t('t.price')}</span>
-        <span className="text-right">{t('t.size')} (BTC)</span>
-        <span className="text-right">{t('t.time')}</span>
-      </div>
-      <div className="max-h-[22rem] overflow-y-auto">
-        {trades.slice(0, 60).map((tr) => (
-          <div key={tr.id} className={`grid grid-cols-3 rounded px-1 py-[3px] text-xs ${tr.q >= BIG_TRADE ? (tr.buy ? 'bg-up/15 font-semibold' : 'bg-down/15 font-semibold') : ''}`}>
-            <span className={`num ${tr.buy ? 'text-up' : 'text-down'}`}>{num(tr.p, lang, 2)}</span>
-            <span className="num text-right">{tr.q.toFixed(4)}</span>
-            <span className="num text-right text-muted">{timeFmt.format(tr.t)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+/** Every minute, settles pending / open journal positions against 1-minute candles. */
+function useJournalRunner() {
+  const busy = useRef(false);
+  useEffect(() => {
+    const run = async () => {
+      if (busy.current || document.visibilityState === 'hidden') return;
+      const ps = load<Position[]>('journal', []);
+      const active = ps.filter((p) => p.status === 'pending' || p.status === 'open');
+      if (!active.length) return;
+      busy.current = true;
+      try {
+        const from = Math.min(...active.map((p) => p.checkedTo ?? p.createdAt));
+        const candles: Candle[] = [];
+        let start = Math.floor(from / 60_000) * 60_000;
+        for (let page = 0; page < 10 && start < Date.now(); page++) {
+          const r = await fetch(`${REST}/klines?symbol=BTCUSDT&interval=1m&startTime=${start}&limit=1000`);
+          if (!r.ok) break;
+          const rows = (await r.json()) as unknown[][];
+          if (!rows.length) break;
+          for (const x of rows) candles.push({ t: +x[0]!, o: +x[1]!, h: +x[2]!, l: +x[3]!, c: +x[4]!, v: +x[5]! });
+          start = candles[candles.length - 1].t + 60_000;
+          if (rows.length < 1000) break;
+        }
+        if (!candles.length) return;
+        const lastT = candles[candles.length - 1].t;
+        const latest = load<Position[]>('journal', []);
+        const next = latest.map((p) => {
+          if (p.status !== 'pending' && p.status !== 'open') return p;
+          const from = p.checkedTo ?? p.createdAt;
+          const s = settle(p, candles.filter((c) => c.t + 60_000 > from), 60_000);
+          return s.status === 'pending' || s.status === 'open' ? { ...s, checkedTo: lastT } : s;
+        });
+        save('journal', next);
+      } catch {
+        /* try again next minute */
+      } finally {
+        busy.current = false;
+      }
+    };
+    run();
+    const id = setInterval(run, 60_000);
+    // Re-check soon after a new position is drawn (not after this runner's own saves).
+    const onChange = (e: Event) => {
+      if ((e as CustomEvent).detail !== 'journal') return;
+      if (load<Position[]>('journal', []).some((p) => (p.status === 'pending' || p.status === 'open') && p.checkedTo == null)) setTimeout(run, 500);
+    };
+    window.addEventListener('btc-storage', onChange);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('btc-storage', onChange);
+    };
+  }, []);
 }

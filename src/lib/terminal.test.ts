@@ -85,7 +85,7 @@ describe('trades', () => {
 
 describe('stream', () => {
   it('builds the combined stream url', () => {
-    expect(streamUrl('5m')).toBe('wss://data-stream.binance.vision/stream?streams=btcusdt@aggTrade/btcusdt@depth20@100ms/btcusdt@kline_5m/btcusdt@ticker');
+    expect(streamUrl('5m')).toBe('wss://data-stream.binance.vision/stream?streams=btcusdt@aggTrade/btcusdt@depth@100ms/btcusdt@kline_5m/btcusdt@ticker');
   });
 
   it('decodes each message kind', () => {
@@ -101,6 +101,10 @@ describe('stream', () => {
     expect(decodeStream(JSON.stringify({ stream: 'btcusdt@ticker', data: { c: '1', P: '-2.5', h: '2', l: '0.5', v: '10', q: '20' } }))).toEqual({
       kind: 'ticker',
       ticker: { last: 1, changePct: -2.5, high: 2, low: 0.5, vol: 10, quoteVol: 20 },
+    });
+    expect(decodeStream(JSON.stringify({ stream: 'btcusdt@depth@100ms', data: { e: 'depthUpdate', U: 1, u: 2, b: [['1', '1']], a: [] } }))).toEqual({
+      kind: 'diff',
+      diff: { U: 1, u: 2, b: [['1', '1']], a: [] },
     });
     expect(decodeStream('not json')).toBeNull();
     expect(decodeStream(JSON.stringify({ stream: 'x@other', data: {} }))).toBeNull();

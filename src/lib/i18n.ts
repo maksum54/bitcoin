@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 import type { Lang } from './format';
 import type { Ccy } from './money';
+import { termEn, termId } from '../terminal/i18n';
 
 const id = {
   appName: 'BTC Nyicil',
@@ -223,6 +224,7 @@ const id = {
   't.status.live': 'live',
   't.status.reconnecting': 'menyambung ulang…',
   't.status.paused': 'dijeda',
+  ...termId,
 };
 
 export type Key = keyof typeof id;
@@ -443,6 +445,7 @@ const en: Record<Key, string> = {
   't.status.live': 'live',
   't.status.reconnecting': 'reconnecting…',
   't.status.paused': 'paused',
+  ...termEn,
 };
 
 export const dicts: Record<Lang, Record<Key, string>> = { id, en };
