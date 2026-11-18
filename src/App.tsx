@@ -14,8 +14,9 @@ const Plan = lazy(() => import('./pages/Plan'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
 const Explorer = lazy(() => import('./pages/Explorer'));
 const News = lazy(() => import('./pages/News'));
+const Terminal = lazy(() => import('./pages/Terminal'));
 
-const ICONS: Record<Tab, string> = { market: '📈', plan: '🗓️', portfolio: '💼', explorer: '🔎', news: '📰' };
+const ICONS: Record<Tab, string> = { market: '📈', terminal: '🕯️', plan: '🗓️', portfolio: '💼', explorer: '🔎', news: '📰' };
 
 const tabFromHash = (): Tab => {
   const h = location.hash.slice(1) as Tab;
@@ -163,6 +164,7 @@ export default function App() {
             <main key={tab} className="anim-page">
               <Suspense fallback={<Loading />}>
                 {tab === 'market' && <Market />}
+                {tab === 'terminal' && <Terminal />}
                 {tab === 'plan' && <Plan />}
                 {tab === 'portfolio' && <Portfolio />}
                 {tab === 'explorer' && <Explorer />}
@@ -172,14 +174,14 @@ export default function App() {
 
             <footer className="mt-8 text-center text-xs text-muted">
               <p>{t('disclaimer')}</p>
-              <p className="mt-1">Data: CoinGecko · mempool.space · blockchain.com · RSS (CoinDesk, Cointelegraph, Bitcoin Magazine, Decrypt, Google News)</p>
+              <p className="mt-1">Data: CoinGecko · Binance · mempool.space · blockchain.com · RSS (CoinDesk, Cointelegraph, Bitcoin Magazine, Decrypt, Google News)</p>
             </footer>
 
             <InstallPrompt />
 
-            <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+            <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
               {TABS.map((k) => (
-                <a key={k} href={`#${k}`} aria-current={tab === k ? 'page' : undefined} className={`press relative flex flex-col items-center gap-0.5 py-2 text-[11px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
+                <a key={k} href={`#${k}`} aria-current={tab === k ? 'page' : undefined} className={`press relative flex flex-col items-center gap-0.5 py-2 text-[10px] ${tab === k ? 'text-accent' : 'text-muted'}`}>
                   <span
                     className={`absolute top-0 h-0.5 rounded-full bg-accent transition-all duration-300 ${tab === k ? 'w-8 opacity-100' : 'w-0 opacity-0'}`}
                     aria-hidden
