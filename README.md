@@ -9,7 +9,7 @@ PWA untuk persiapan nyicil (DCA) Bitcoin: pantau harga, rencanakan cicilan, cata
 | Tab | Isi |
 | --- | --- |
 | **Pasar** | Harga BTC (USD/IDR), grafik 24 jam–1 tahun, konverter BTC ↔ USD ↔ IDR ↔ sats, alarm harga (USD atau IDR) |
-| **Terminal** | Grafik candlestick live BTC/USDT (1m–1d, zoom & geser, crosshair OHLC + volume), order book dengan pengelompokan harga, spread & rasio beli/jual, tape transaksi terakhir dengan net taker flow dan sorotan transaksi ≥ 1 BTC |
+| **Terminal** | 8 bagian: **Grafik** (candlestick 1m–1d, indikator EMA/Bollinger/Keltner/VWAP/volume profile/RSI/Stoch RSI/MACD, likuidasi di grafik, gambar posisi long/short) · **DOM & tape** (order book penuh, volume terjadi per harga, Pull/Stack, limit order paper dari DOM) · **Profile & footprint** (TPO harian/mingguan dengan POC, value area, single print, poor high/low; footprint delta, bid×ask, volume) · **Likuidasi & flow** (likuidasi Binance/Bybit/OKX, net taker flow spot & perp per exchange) · **Sinyal** (screener three-drive, RSI, golden/death cross untuk 50–200 koin) · **Jurnal** (posisi diselesaikan oleh harga, P&L, win rate, kurva ekuitas, kalender $/R, per arah & strategi) · **Paper trading** (100.000 USDT, perpetual BTC/ETH/SOL) · **Strategy tester** (aturan dari daftar, fee/slippage/funding/likuidasi, laporan vs buy & hold, Monte Carlo, optimizer in/out-of-sample, uji di market lain). Gestur sentuh (cubit untuk zoom) di HP |
 | **Nyicil** | Rencana cicilan bulanan (default mulai Januari tahun depan), proyeksi 3 skenario, jadwal yang otomatis tercentang, simulasi DCA dengan data historis sejak 2011 |
 | **Portofolio** | Catat beli/jual, harga rata-rata, untung/rugi (metode average cost), grafik nilai vs modal, backup/restore JSON, ekspor/impor CSV |
 | **Explorer** | Cari alamat / txid / blok, biaya jaringan, mempool, hashrate, hitung mundur halving, daftar alamat yang dipantau |
@@ -21,7 +21,7 @@ Mata uang **USD (default) / IDR**, bahasa Indonesia/English, dan tema terang (de
 
 - Harga & grafik: CoinGecko
 - Data historis panjang: blockchain.com charts
-- Terminal (candle, order book, transaksi live): Binance public market data (`data-api.binance.vision`, WebSocket `data-stream.binance.vision`)
+- Terminal: Binance public market data (`data-api.binance.vision`, `data-stream.binance.vision`, `fstream.binance.com`), Bybit (`stream.bybit.com`), OKX (`ws.okx.com`), Coinbase (`ws-feed.exchange.coinbase.com`) — semua publik, tanpa API key. Jurnal, paper trading, footprint dan backtest dihitung & disimpan di browser.
 - Blockchain: mempool.space
 - Berita: RSS CoinDesk, Cointelegraph, Bitcoin Magazine, Decrypt, Google News (diambil lewat `/api/news`)
 - Whale: blok terakhir + mempool dari blockchain.com (diambil lewat `/api/whales`)

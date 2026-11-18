@@ -3,6 +3,7 @@
  * from Binance's public market-data endpoints (no account or API key).
  * Everything here is pure so it can be tested without a network.
  */
+import { parseDiff, type Diff } from '../terminal/orderbook';
 
 export const REST = 'https://data-api.binance.vision/api/v3';
 export const WS = 'wss://data-stream.binance.vision/stream';
@@ -189,12 +190,13 @@ export function niceTicks(lo: number, hi: number, count = 5): number[] {
 /** Combined stream URL for the symbol and candle interval. */
 export function streamUrl(interval: Interval, symbol = SYMBOL): string {
   const s = symbol.toLowerCase();
-  return `${WS}?streams=${[`${s}@aggTrade`, `${s}@depth20@100ms`, `${s}@kline_${interval}`, `${s}@ticker`].join('/')}`;
+  return `${WS}?streams=${[`${s}@aggTrade`, `${s}@depth@100ms`, `${s}@kline_${interval}`, `${s}@ticker`].join('/')}`;
 }
 
 export type StreamMsg =
   | { kind: 'trade'; trade: Trade }
   | { kind: 'book'; book: Book }
+  | { kind: 'diff'; diff: Diff }
   | { kind: 'kline'; candle: Candle }
   | { kind: 'ticker'; ticker: Ticker };
 
@@ -212,6 +214,10 @@ export function decodeStream(raw: string): StreamMsg | null {
   if (s.endsWith('@aggTrade')) {
     const trade = parseTrade(d);
     return trade && { kind: 'trade', trade };
+  }
+  if (s.includes('@depth') && d.e === 'depthUpdate') {
+    const diff = parseDiff(d);
+    return diff && { kind: 'diff', diff };
   }
   if (s.includes('@depth')) {
     const book = parseBook(d);

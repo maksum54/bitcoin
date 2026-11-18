@@ -50,7 +50,7 @@ export function useStored<T>(key: string, fallback: T) {
 }
 
 /** Keys that make up the user's own data (for backup/restore). */
-export const USER_KEYS = ['txs', 'plan', 'alerts', 'watch', 'lang', 'theme', 'ccy'];
+export const USER_KEYS = ['txs', 'plan', 'alerts', 'watch', 'lang', 'theme', 'ccy', 'journal', 'paper', 'term.strategy', 'term.ind'];
 
 export function exportBackup(): string {
   const data: Record<string, unknown> = { app: 'btc-nyicil', version: 1, exportedAt: new Date().toISOString() };
