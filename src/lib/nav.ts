@@ -1,8 +1,8 @@
 import { createContext, useContext } from 'react';
 import type { Ccy } from './money';
 
-export type Tab = 'market' | 'plan' | 'portfolio' | 'explorer' | 'news';
-export const TABS: Tab[] = ['market', 'plan', 'portfolio', 'explorer', 'news'];
+export type Tab = 'market' | 'terminal' | 'plan' | 'portfolio' | 'explorer' | 'news';
+export const TABS: Tab[] = ['market', 'terminal', 'plan', 'portfolio', 'explorer', 'news'];
 
 export interface Draft {
   date: string;

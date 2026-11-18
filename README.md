@@ -9,6 +9,7 @@ PWA untuk persiapan nyicil (DCA) Bitcoin: pantau harga, rencanakan cicilan, cata
 | Tab | Isi |
 | --- | --- |
 | **Pasar** | Harga BTC (USD/IDR), grafik 24 jam–1 tahun, konverter BTC ↔ USD ↔ IDR ↔ sats, alarm harga (USD atau IDR) |
+| **Terminal** | Grafik candlestick live BTC/USDT (1m–1d, zoom & geser, crosshair OHLC + volume), order book dengan pengelompokan harga, spread & rasio beli/jual, tape transaksi terakhir dengan net taker flow dan sorotan transaksi ≥ 1 BTC |
 | **Nyicil** | Rencana cicilan bulanan (default mulai Januari tahun depan), proyeksi 3 skenario, jadwal yang otomatis tercentang, simulasi DCA dengan data historis sejak 2011 |
 | **Portofolio** | Catat beli/jual, harga rata-rata, untung/rugi (metode average cost), grafik nilai vs modal, backup/restore JSON, ekspor/impor CSV |
 | **Explorer** | Cari alamat / txid / blok, biaya jaringan, mempool, hashrate, hitung mundur halving, daftar alamat yang dipantau |
@@ -20,6 +21,7 @@ Mata uang **USD (default) / IDR**, bahasa Indonesia/English, dan tema terang (de
 
 - Harga & grafik: CoinGecko
 - Data historis panjang: blockchain.com charts
+- Terminal (candle, order book, transaksi live): Binance public market data (`data-api.binance.vision`, WebSocket `data-stream.binance.vision`)
 - Blockchain: mempool.space
 - Berita: RSS CoinDesk, Cointelegraph, Bitcoin Magazine, Decrypt, Google News (diambil lewat `/api/news`)
 - Whale: blok terakhir + mempool dari blockchain.com (diambil lewat `/api/whales`)
